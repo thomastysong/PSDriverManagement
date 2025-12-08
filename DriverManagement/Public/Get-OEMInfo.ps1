@@ -41,18 +41,16 @@ function Get-OEMInfo {
                 $oemInfo.Model = $system.Model
                 $oemInfo.SystemID = $system.SystemSKUNumber
                 
-                # Check if model is in supported list
-                $oemInfo.IsSupported = $config.SupportedDellModels | Where-Object { 
-                    $system.Model -like "*$_*" 
-                } | Select-Object -First 1
+                # All Dell systems are supported
+                $oemInfo.IsSupported = $true
             }
             'LENOVO' {
                 $oemInfo.OEM = [OEMType]::Lenovo
                 $oemInfo.Model = $product.Version  # Lenovo stores friendly name here
-                $oemInfo.MTM = $product.Name.Substring(0, 4)  # First 4 chars are MTM
+                $oemInfo.MTM = if ($product.Name.Length -ge 4) { $product.Name.Substring(0, 4) } else { $product.Name }
                 
-                # Check if MTM is in supported list
-                $oemInfo.IsSupported = $oemInfo.MTM -in $config.SupportedLenovoMTMs
+                # All Lenovo systems are supported
+                $oemInfo.IsSupported = $true
             }
             default {
                 $oemInfo.OEM = [OEMType]::Unknown

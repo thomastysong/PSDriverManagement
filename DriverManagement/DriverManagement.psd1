@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.0.0'
+    ModuleVersion     = '1.1.0'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -137,6 +137,10 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.1.0
+- Universal support for ALL Dell and Lenovo systems (removed model restrictions)
+- No longer limited to specific models - works with any Dell or Lenovo hardware
+
 ## Version 1.0.0
 - Initial release
 - Support for Dell Command Update CLI integration
@@ -165,12 +169,10 @@
             DefaultMode          = 'Individual'
             DefaultUpdateTypes   = @('Driver')
             DefaultSeverity      = @('Critical', 'Recommended')
-            SupportedDellModels  = @(
-                'Precision 5690', 'Precision 5760', 'Precision 5680', 'Precision 5490'
-                'Precision 5480', 'Precision 5750', 'Precision 3561', 'Precision 3551'
-                'Precision 7680', 'Latitude 7420', 'Latitude 9440'
-            )
-            SupportedLenovoMTMs  = @('21KC', '21KD', '21NS', '21NT')
+            # Note: As of v1.1.0, ALL Dell and Lenovo systems are supported
+            # These lists are kept for reference but no longer used for filtering
+            SupportedDellModels  = @()  # All Dell models supported
+            SupportedLenovoMTMs  = @()  # All Lenovo models supported
         }
     }
     

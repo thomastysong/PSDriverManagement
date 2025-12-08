@@ -165,13 +165,12 @@ Get-DriverManagementLogs -Last 100 -Severity Error, Warning
 
 ## Supported Hardware
 
-### Dell
-- Precision: 5690, 5760, 5680, 5490, 5480, 5750, 3561, 3551, 7680
-- Latitude: 7420, 9440 2-in-1
+**All Dell and Lenovo systems are supported.** The module automatically detects the OEM and applies the appropriate driver management strategy:
 
-### Lenovo
-- ThinkPad X1 Carbon Gen 12 (MTM: 21KC, 21KD)
-- ThinkPad X1 Carbon Gen 13 (MTM: 21NS, 21NT)
+- **Dell**: Uses Dell Command Update CLI with fallback to Dell catalog for driver downloads
+- **Lenovo**: Uses LSUClient module with fallback to Lenovo Thin Installer
+
+Non-Dell/Lenovo systems will be detected but skipped (no driver operations performed).
 
 ## Exit Codes
 

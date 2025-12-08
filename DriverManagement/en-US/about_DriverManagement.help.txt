@@ -43,13 +43,17 @@ QUICK START
     Invoke-DriverManagement -Mode FullPack -IncludeWindowsUpdates
 
 SUPPORTED HARDWARE
+    All Dell and Lenovo systems are supported automatically.
+    
     Dell:
-        Precision 5690, 5760, 5680, 5490, 5480, 5750, 3561, 3551, 7680
-        Latitude 7420, 9440 2-in-1
+        Uses Dell Command Update CLI with fallback to Dell catalog
+        Supports all Precision, Latitude, OptiPlex, and XPS models
     
     Lenovo:
-        ThinkPad X1 Carbon Gen 12 (MTM: 21KC, 21KD)
-        ThinkPad X1 Carbon Gen 13 (MTM: 21NS, 21NT)
+        Uses LSUClient module with fallback to Thin Installer
+        Supports all ThinkPad, ThinkCentre, and ThinkStation models
+    
+    Non-Dell/Lenovo systems will be detected but skipped.
 
 CONFIGURATION
     Module configuration is stored in the manifest PrivateData and can be
