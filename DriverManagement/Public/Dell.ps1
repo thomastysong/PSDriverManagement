@@ -22,6 +22,126 @@ function Get-DellCommandUpdatePath {
     return $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
 
+function Install-DellCommandUpdate {
+    <#
+    .SYNOPSIS
+        Downloads and installs Dell Command Update
+    .DESCRIPTION
+        Automatically downloads the latest Dell Command Update from Dell's website
+        and performs a silent installation. Requires elevation.
+    .EXAMPLE
+        Install-DellCommandUpdate
+    .NOTES
+        Dell Command Update Universal Windows Platform application
+        https://www.dell.com/support/kbdoc/en-us/000177325/dell-command-update
+    #>
+    [CmdletBinding()]
+    param()
+    
+    Assert-Elevation -Operation "Installing Dell Command Update"
+    
+    $config = $script:ModuleConfig
+    
+    # Dell Command Update download URL (Universal Windows Platform version)
+    # This URL points to the latest stable release
+    $dcuUrl = if ($config.DellCommandUpdateUrl) {
+        $config.DellCommandUpdateUrl
+    } else {
+        # Default URL for DCU 5.x Universal Windows Platform
+        "https://dl.dell.com/FOLDER11914155M/1/Dell-Command-Update-Windows-Universal-Application_601KT_WIN_5.4.0_A00.EXE"
+    }
+    
+    $installerPath = Join-Path $env:TEMP "DellCommandUpdate_$(Get-Date -Format 'yyyyMMddHHmmss').exe"
+    
+    Write-DriverLog -Message "Downloading Dell Command Update from $dcuUrl" -Severity Info
+    
+    try {
+        # Download with retry logic
+        Invoke-WithRetry -ScriptBlock {
+            # Use BITS for reliable download, fallback to WebRequest
+            try {
+                Start-BitsTransfer -Source $dcuUrl -Destination $installerPath -ErrorAction Stop
+            }
+            catch {
+                Invoke-WebRequest -Uri $dcuUrl -OutFile $installerPath -UseBasicParsing -ErrorAction Stop
+            }
+        } -MaxAttempts 3 -ExponentialBackoff
+        
+        if (-not (Test-Path $installerPath)) {
+            throw "Download failed - installer not found"
+        }
+        
+        $fileSize = (Get-Item $installerPath).Length / 1MB
+        Write-DriverLog -Message "Downloaded DCU installer ($([math]::Round($fileSize, 1)) MB)" -Severity Info
+        
+        # Silent install
+        Write-DriverLog -Message "Installing Dell Command Update silently..." -Severity Info
+        
+        $installProcess = Start-Process -FilePath $installerPath -ArgumentList "/s" -Wait -PassThru -NoNewWindow
+        
+        if ($installProcess.ExitCode -eq 0) {
+            Write-DriverLog -Message "Dell Command Update installed successfully" -Severity Info
+        }
+        else {
+            throw "Installation failed with exit code: $($installProcess.ExitCode)"
+        }
+    }
+    catch {
+        Write-DriverLog -Message "Failed to install Dell Command Update: $($_.Exception.Message)" -Severity Error
+        throw
+    }
+    finally {
+        # Cleanup installer
+        if (Test-Path $installerPath) {
+            Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Initialize-DellModule {
+    <#
+    .SYNOPSIS
+        Ensures Dell Command Update is available
+    .DESCRIPTION
+        Checks if Dell Command Update is installed. If not, automatically
+        downloads and installs it from Dell's website.
+    .OUTPUTS
+        Path to dcu-cli.exe
+    .EXAMPLE
+        $dcuPath = Initialize-DellModule
+    #>
+    [CmdletBinding()]
+    param()
+    
+    $dcuPath = Get-DellCommandUpdatePath
+    
+    if (-not $dcuPath) {
+        Write-DriverLog -Message "Dell Command Update not found, installing..." -Severity Info
+        
+        try {
+            Install-DellCommandUpdate
+            
+            # Wait a moment for installation to complete
+            Start-Sleep -Seconds 2
+            
+            # Re-check for DCU
+            $dcuPath = Get-DellCommandUpdatePath
+            
+            if (-not $dcuPath) {
+                throw "Dell Command Update installation completed but dcu-cli.exe not found"
+            }
+            
+            Write-DriverLog -Message "Dell Command Update ready at: $dcuPath" -Severity Info
+        }
+        catch {
+            Write-DriverLog -Message "Failed to initialize Dell Command Update: $($_.Exception.Message)" -Severity Error
+            throw "Dell Command Update could not be installed: $($_.Exception.Message)"
+        }
+    }
+    
+    return $dcuPath
+}
+
 function Get-DellDriverUpdates {
     <#
     .SYNOPSIS
@@ -48,9 +168,11 @@ function Get-DellDriverUpdates {
         [string[]]$Severity = @('Critical', 'Recommended')
     )
     
-    $dcuCli = Get-DellCommandUpdatePath
-    if (-not $dcuCli) {
-        Write-DriverLog -Message "Dell Command Update not installed" -Severity Warning
+    try {
+        $dcuCli = Initialize-DellModule
+    }
+    catch {
+        Write-DriverLog -Message "Dell Command Update not available: $($_.Exception.Message)" -Severity Warning
         return @()
     }
     
@@ -139,10 +261,12 @@ function Install-DellDriverUpdates {
     $result = [DriverUpdateResult]::new()
     $result.CorrelationId = $script:CorrelationId
     
-    $dcuCli = Get-DellCommandUpdatePath
-    if (-not $dcuCli) {
+    try {
+        $dcuCli = Initialize-DellModule
+    }
+    catch {
         $result.Success = $false
-        $result.Message = "Dell Command Update not installed"
+        $result.Message = "Dell Command Update not available: $($_.Exception.Message)"
         $result.ExitCode = 1
         Write-DriverLog -Message $result.Message -Severity Error
         return $result
@@ -232,11 +356,14 @@ function Install-DellFullDriverPack {
     $result = [DriverUpdateResult]::new()
     $result.CorrelationId = $script:CorrelationId
     
-    $dcuCli = Get-DellCommandUpdatePath
-    if (-not $dcuCli) {
+    try {
+        $dcuCli = Initialize-DellModule
+    }
+    catch {
         $result.Success = $false
-        $result.Message = "Dell Command Update not installed"
+        $result.Message = "Dell Command Update not available: $($_.Exception.Message)"
         $result.ExitCode = 1
+        Write-DriverLog -Message $result.Message -Severity Error
         return $result
     }
     

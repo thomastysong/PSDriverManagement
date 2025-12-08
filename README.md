@@ -167,8 +167,18 @@ Get-DriverManagementLogs -Last 100 -Severity Error, Warning
 
 **All Dell and Lenovo systems are supported.** The module automatically detects the OEM and applies the appropriate driver management strategy:
 
-- **Dell**: Uses Dell Command Update CLI with fallback to Dell catalog for driver downloads
-- **Lenovo**: Uses LSUClient module with fallback to Lenovo Thin Installer
+- **Dell**: Uses Dell Command Update CLI (auto-installed if not present)
+- **Lenovo**: Uses LSUClient module (auto-installed from PowerShell Gallery if not present)
+
+### Automatic Tool Installation
+
+The module will automatically download and install the required driver management tools if they're not already present:
+
+| OEM | Tool | Auto-Install Source |
+|-----|------|---------------------|
+| Dell | Dell Command Update | Dell's website (silent install) |
+| Lenovo | LSUClient | PowerShell Gallery |
+| Lenovo | Thin Installer | Fallback if LSUClient fails |
 
 Non-Dell/Lenovo systems will be detected but skipped (no driver operations performed).
 

@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.1.0'
+    ModuleVersion     = '1.2.0'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -137,6 +137,12 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.2.0
+- Automatic Dell Command Update installation if not present
+- Downloads DCU from Dell's website and installs silently
+- Configurable download URL in module manifest
+- Matches Lenovo LSUClient auto-install behavior
+
 ## Version 1.1.0
 - Universal support for ALL Dell and Lenovo systems (removed model restrictions)
 - No longer limited to specific models - works with any Dell or Lenovo hardware
@@ -173,6 +179,10 @@
             # These lists are kept for reference but no longer used for filtering
             SupportedDellModels  = @()  # All Dell models supported
             SupportedLenovoMTMs  = @()  # All Lenovo models supported
+            
+            # Dell Command Update download URL (auto-installed if not present)
+            # Update this URL when new DCU versions are released
+            DellCommandUpdateUrl = 'https://dl.dell.com/FOLDER11914155M/1/Dell-Command-Update-Windows-Universal-Application_601KT_WIN_5.4.0_A00.EXE'
         }
     }
     

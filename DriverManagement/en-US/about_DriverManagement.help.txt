@@ -46,14 +46,25 @@ SUPPORTED HARDWARE
     All Dell and Lenovo systems are supported automatically.
     
     Dell:
-        Uses Dell Command Update CLI with fallback to Dell catalog
+        Uses Dell Command Update CLI (auto-installed if not present)
         Supports all Precision, Latitude, OptiPlex, and XPS models
     
     Lenovo:
-        Uses LSUClient module with fallback to Thin Installer
+        Uses LSUClient module (auto-installed from PSGallery if not present)
+        Falls back to Thin Installer if LSUClient unavailable
         Supports all ThinkPad, ThinkCentre, and ThinkStation models
     
     Non-Dell/Lenovo systems will be detected but skipped.
+
+AUTOMATIC TOOL INSTALLATION
+    The module automatically downloads and installs required tools:
+    
+    Dell Command Update:
+        Downloaded from Dell's website and silently installed
+        Configurable URL in module manifest (DellCommandUpdateUrl)
+    
+    LSUClient (Lenovo):
+        Installed from PowerShell Gallery using Install-Module
 
 CONFIGURATION
     Module configuration is stored in the manifest PrivateData and can be
