@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.2.0'
+    ModuleVersion     = '1.2.1'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -137,6 +137,11 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.2.1
+- Added PSDM_DCU_URL environment variable for custom Dell Command Update download URL
+- Enables enterprises to host DCU on internal CDN/repository
+- Updated documentation with CDN customization instructions
+
 ## Version 1.2.0
 - Automatic Dell Command Update installation if not present
 - Downloads DCU from Dell's website and installs silently

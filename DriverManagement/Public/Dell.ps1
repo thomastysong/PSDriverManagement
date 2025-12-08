@@ -43,8 +43,11 @@ function Install-DellCommandUpdate {
     $config = $script:ModuleConfig
     
     # Dell Command Update download URL (Universal Windows Platform version)
-    # This URL points to the latest stable release
-    $dcuUrl = if ($config.DellCommandUpdateUrl) {
+    # Priority: 1) Environment variable, 2) Module config, 3) Default URL
+    $dcuUrl = if ($env:PSDM_DCU_URL) {
+        Write-DriverLog -Message "Using DCU URL from environment variable" -Severity Info
+        $env:PSDM_DCU_URL
+    } elseif ($config.DellCommandUpdateUrl) {
         $config.DellCommandUpdateUrl
     } else {
         # Default URL for DCU 5.x Universal Windows Platform

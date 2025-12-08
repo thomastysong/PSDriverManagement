@@ -140,6 +140,22 @@ See `ModuleInstaller/Examples/OrchestratorIntegration.ps1` for complete integrat
 | `PSDM_MODULE_SOURCE` | Base URL for module downloads | GitHub releases |
 | `PSDM_LOG_PATH` | Custom log directory | `%ProgramData%\PSDriverManagement\Logs` |
 | `PSDM_EVENT_LOG` | Custom event log name | `PSDriverManagement` |
+| `PSDM_DCU_URL` | Dell Command Update installer URL | Dell CDN |
+
+### Customizing Dell Command Update Download URL
+
+If Dell's CDN is blocked or you want to host DCU internally, set a custom URL:
+
+```powershell
+# Option 1: Environment variable (runtime)
+$env:PSDM_DCU_URL = "https://your-cdn.company.com/software/Dell-Command-Update.exe"
+Invoke-DriverManagement -Mode Individual
+
+# Option 2: Set permanently via system environment
+[Environment]::SetEnvironmentVariable("PSDM_DCU_URL", "https://your-cdn.company.com/software/Dell-Command-Update.exe", "Machine")
+```
+
+For enterprise deployments, you can also modify the `DellCommandUpdateUrl` in the module manifest (`DriverManagement.psd1`) before distributing.
 
 ### View Current Configuration
 

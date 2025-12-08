@@ -61,7 +61,7 @@ AUTOMATIC TOOL INSTALLATION
     
     Dell Command Update:
         Downloaded from Dell's website and silently installed
-        Configurable URL in module manifest (DellCommandUpdateUrl)
+        Configurable via $env:PSDM_DCU_URL or manifest (DellCommandUpdateUrl)
     
     LSUClient (Lenovo):
         Installed from PowerShell Gallery using Install-Module
@@ -72,6 +72,10 @@ CONFIGURATION
     
         $env:PSDM_LOG_PATH = "D:\Logs\DriverMgmt"
         $env:PSDM_EVENT_LOG = "CustomLogName"
+        $env:PSDM_DCU_URL = "https://your-cdn.com/Dell-Command-Update.exe"
+    
+    For enterprises with restricted internet access, host DCU on your internal
+    CDN/repository and set PSDM_DCU_URL before running the module.
     
     View current configuration:
     
