@@ -21,7 +21,7 @@ function Get-OEMInfo {
         OEMInfo object with OEM, Model, SystemID/MTM, and IsSupported properties
     #>
     [CmdletBinding()]
-    [OutputType([OEMInfo])]
+    [OutputType('OEMInfo')]
     param()
     
     $config = $script:ModuleConfig

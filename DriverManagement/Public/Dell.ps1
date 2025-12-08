@@ -120,7 +120,7 @@ function Install-DellDriverUpdates {
         DriverUpdateResult object
     #>
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([DriverUpdateResult])]
+    [OutputType('DriverUpdateResult')]
     param(
         [Parameter()]
         [ValidateSet('Driver', 'BIOS', 'Firmware', 'All')]
@@ -221,7 +221,7 @@ function Install-DellFullDriverPack {
         Install-DellFullDriverPack -NoReboot
     #>
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([DriverUpdateResult])]
+    [OutputType('DriverUpdateResult')]
     param(
         [Parameter()]
         [switch]$NoReboot

@@ -156,15 +156,49 @@ function Get-DriverManagementConfig {
 
 $ExecutionContext.SessionState.Module.OnRemove = {
     # Cleanup actions when module is removed
-    Remove-Alias -Name 'idm' -Scope Global -Force -ErrorAction SilentlyContinue
-    Remove-Alias -Name 'gdcs' -Scope Global -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path Alias:idm -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path Alias:gdcs -Force -ErrorAction SilentlyContinue
 }
 
 #endregion
 
-# Export additional helper
+# Export all public functions and aliases
+# Note: FunctionsToExport in the manifest acts as a filter on top of this
 Export-ModuleMember -Function @(
+    # Core functions defined in this file
     'Get-DriverManagementConfig'
+    
+    # Core driver management (Public/Invoke-DriverManagement.ps1)
+    'Invoke-DriverManagement'
+    
+    # Compliance (Public/Get-DriverComplianceStatus.ps1, Update-DriverComplianceStatus.ps1)
+    'Get-DriverComplianceStatus'
+    'Update-DriverComplianceStatus'
+    
+    # Dell-specific (Public/Dell.ps1)
+    'Get-DellDriverUpdates'
+    'Install-DellDriverUpdates'
+    'Install-DellFullDriverPack'
+    
+    # Lenovo-specific (Public/Lenovo.ps1)
+    'Get-LenovoDriverUpdates'
+    'Install-LenovoDriverUpdates'
+    'Install-LenovoFullDriverPack'
+    
+    # Windows Updates (Public/WindowsUpdate.ps1)
+    'Install-WindowsUpdates'
+    
+    # Utility functions (Public/Get-OEMInfo.ps1)
+    'Get-OEMInfo'
+    'Test-DriverManagementPrerequisites'
+    
+    # Logging (Private/Logging.ps1 - exposed for initialization)
+    'Initialize-DriverManagementLogging'
+    'Get-DriverManagementLogs'
+    
+    # Scheduled task management (Public/ScheduledTasks.ps1)
+    'Register-DriverManagementTask'
+    'Unregister-DriverManagementTask'
 ) -Alias @(
     'idm'
     'gdcs'

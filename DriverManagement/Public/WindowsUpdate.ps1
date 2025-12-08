@@ -23,7 +23,7 @@ function Install-WindowsUpdates {
         DriverUpdateResult object
     #>
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([DriverUpdateResult])]
+    [OutputType('DriverUpdateResult')]
     param(
         [Parameter()]
         [switch]$IncludeDrivers,
@@ -122,7 +122,7 @@ function Get-DriverComplianceStatus {
         DriverComplianceStatus object
     #>
     [CmdletBinding()]
-    [OutputType([DriverComplianceStatus])]
+    [OutputType('DriverComplianceStatus')]
     param()
     
     $config = $script:ModuleConfig

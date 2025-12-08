@@ -122,7 +122,7 @@ function Install-LenovoDriverUpdates {
         DriverUpdateResult object
     #>
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([DriverUpdateResult])]
+    [OutputType('DriverUpdateResult')]
     param(
         [Parameter()]
         [ValidateSet('Driver', 'BIOS', 'Firmware', 'All')]
@@ -287,7 +287,7 @@ function Install-LenovoFullDriverPack {
         Install-LenovoFullDriverPack -NoReboot
     #>
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([DriverUpdateResult])]
+    [OutputType('DriverUpdateResult')]
     param(
         [Parameter()]
         [switch]$NoReboot

@@ -66,6 +66,8 @@
         'Get-OEMInfo'
         'Test-DriverManagementPrerequisites'
         'Initialize-DriverManagementLogging'
+        'Get-DriverManagementLogs'
+        'Get-DriverManagementConfig'
         
         # Scheduled task management
         'Register-DriverManagementTask'

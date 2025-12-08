@@ -37,7 +37,7 @@ function Invoke-DriverManagement {
         DriverUpdateResult object with success status and details
     #>
     [CmdletBinding(SupportsShouldProcess)]
-    [OutputType([DriverUpdateResult])]
+    [OutputType('DriverUpdateResult')]
     param(
         [Parameter()]
         [ValidateSet('Individual', 'FullPack')]

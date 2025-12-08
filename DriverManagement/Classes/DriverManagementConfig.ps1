@@ -131,18 +131,18 @@ class DriverComplianceStatus {
     
     static [DriverComplianceStatus] FromJson([string]$json) {
         $obj = $json | ConvertFrom-Json
-        $status = [DriverComplianceStatus]::new()
-        $status.Version = $obj.Version
-        $status.Status = [ComplianceStatus]$obj.Status
-        $status.LastCheckDate = [datetime]$obj.LastCheckDate
-        $status.Computer = $obj.Computer
-        $status.OEM = [OEMType]$obj.OEM
-        $status.Model = $obj.Model
-        $status.UpdatesApplied = $obj.UpdatesApplied
-        $status.UpdatesPending = $obj.UpdatesPending
-        $status.Message = $obj.Message
-        $status.CorrelationId = $obj.CorrelationId
-        return $status
+        $result = [DriverComplianceStatus]::new()
+        $result.Version = $obj.Version
+        $result.Status = [ComplianceStatus]$obj.Status
+        $result.LastCheckDate = [datetime]$obj.LastCheckDate
+        $result.Computer = $obj.Computer
+        $result.OEM = [OEMType]$obj.OEM
+        $result.Model = $obj.Model
+        $result.UpdatesApplied = $obj.UpdatesApplied
+        $result.UpdatesPending = $obj.UpdatesPending
+        $result.Message = $obj.Message
+        $result.CorrelationId = $obj.CorrelationId
+        return $result
     }
 }
 
@@ -164,7 +164,7 @@ class DriverLogEntry {
         $this.Component = 'DriverManagement'
         $this.Computer = $env:COMPUTERNAME
         $this.User = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-        $this.ProcessId = $PID
+        $this.ProcessId = [System.Diagnostics.Process]::GetCurrentProcess().Id
         $this.Message = $message
         $this.Context = @{}
     }
