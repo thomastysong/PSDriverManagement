@@ -1,0 +1,114 @@
+TOPIC
+    about_DriverManagement
+
+SHORT DESCRIPTION
+    Enterprise driver and Windows update management for Dell and Lenovo endpoints.
+
+LONG DESCRIPTION
+    The DriverManagement module provides automated driver and Windows update 
+    management for enterprise fleets. It supports Dell and Lenovo hardware with
+    two operational modes:
+    
+    - Individual: Surgical updates for outdated or missing drivers only
+    - FullPack: Complete driver pack reinstallation
+    
+    The module integrates with:
+    - Dell Command Update CLI for Dell systems
+    - LSUClient / Thin Installer for Lenovo systems  
+    - PSWindowsUpdate for Windows cumulative updates
+    
+    It provides comprehensive logging to Windows Event Log and JSON files,
+    making it suitable for enterprise monitoring and compliance tracking.
+
+INSTALLATION
+    The module can be installed from PowerShell Gallery:
+    
+        Install-Module -Name DriverManagement
+    
+    Or manually by copying to a PSModulePath location:
+    
+        Copy-Item -Path .\DriverManagement -Destination $env:ProgramFiles\WindowsPowerShell\Modules -Recurse
+
+QUICK START
+    # Import the module
+    Import-Module DriverManagement
+    
+    # Check prerequisites
+    Test-DriverManagementPrerequisites -Detailed
+    
+    # Run individual driver updates
+    Invoke-DriverManagement -Mode Individual
+    
+    # Run full pack reinstall with Windows Updates
+    Invoke-DriverManagement -Mode FullPack -IncludeWindowsUpdates
+
+SUPPORTED HARDWARE
+    Dell:
+        Precision 5690, 5760, 5680, 5490, 5480, 5750, 3561, 3551, 7680
+        Latitude 7420, 9440 2-in-1
+    
+    Lenovo:
+        ThinkPad X1 Carbon Gen 12 (MTM: 21KC, 21KD)
+        ThinkPad X1 Carbon Gen 13 (MTM: 21NS, 21NT)
+
+CONFIGURATION
+    Module configuration is stored in the manifest PrivateData and can be
+    overridden via environment variables:
+    
+        $env:PSDM_LOG_PATH = "D:\Logs\DriverMgmt"
+        $env:PSDM_EVENT_LOG = "CustomLogName"
+    
+    View current configuration:
+    
+        Get-DriverManagementConfig
+
+LOGGING
+    Logs are written to:
+    - Windows Event Log: PSDriverManagement/DriverManagement
+    - JSON files: %ProgramData%\PSDriverManagement\Logs\
+    
+    Event IDs:
+        1000-1099: Debug/Information
+        2000-2099: Warning
+        3000-3099: Error
+    
+    Retrieve logs:
+    
+        Get-DriverManagementLogs -Last 50 -Severity Error
+
+SCHEDULED TASKS
+    Register automated updates:
+    
+        # Weekly on Saturday at 3am
+        Register-DriverManagementTask -TriggerType Weekly -Time "03:00"
+        
+        # On driver failure events
+        Register-DriverManagementTask -TriggerType EventDriven
+        
+        # At system startup
+        Register-DriverManagementTask -TriggerType AtStartup
+
+INTUNE DEPLOYMENT
+    Package as Win32 app with:
+    
+    Install command:
+        powershell.exe -ExecutionPolicy Bypass -Command "Import-Module DriverManagement; Invoke-DriverManagement"
+    
+    Detection script:
+        $compliance = Get-Content "$env:ProgramData\PSDriverManagement\compliance.json" | ConvertFrom-Json
+        if ($compliance.Status -eq 'Compliant') { exit 0 } else { exit 1 }
+
+ALIASES
+    idm  -> Invoke-DriverManagement
+    gdcs -> Get-DriverComplianceStatus
+
+SEE ALSO
+    Invoke-DriverManagement
+    Get-OEMInfo
+    Get-DriverComplianceStatus
+    Install-DellDriverUpdates
+    Install-LenovoDriverUpdates
+    Register-DriverManagementTask
+
+KEYWORDS
+    Driver, Update, Dell, Lenovo, Intune, Enterprise, Fleet, Windows

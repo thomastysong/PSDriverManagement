@@ -1,0 +1,61 @@
+# PowerShell Module Ignores
+*.dll
+*.pdb
+
+# Build outputs
+/output/
+/artifacts/
+/bin/
+/obj/
+
+# Test results
+/TestResults/
+*.trx
+
+# Coverage reports
+/coverage/
+*.coverage
+*.coveragexml
+
+# IDE and editor files
+.vs/
+.vscode/
+*.suo
+*.user
+*.sln.docstates
+.idea/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Package files
+*.nupkg
+*.zip
+*.intunewin
+
+# Temporary files
+*.tmp
+*.temp
+~$*
+
+# Local configuration overrides
+local.settings.json
+*.local.ps1
+
+# Secrets and credentials
+*.pfx
+*.snk
+secrets.json
+credentials.json
+
