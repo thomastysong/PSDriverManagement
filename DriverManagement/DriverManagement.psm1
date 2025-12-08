@@ -102,6 +102,9 @@ $publicFiles = @(
     'Public\WindowsUpdate.ps1'
     'Public\ScheduledTasks.ps1'
     'Public\Invoke-DriverManagement.ps1'
+    'Public\UpdateBlocking.ps1'
+    'Public\DriverRollback.ps1'
+    'Public\UpdateApproval.ps1'
 )
 
 # Dot-source all files

@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.2.1'
+    ModuleVersion     = '1.3.0'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -10,7 +10,7 @@
     Copyright         = '(c) 2024 Thomas Tyson. MIT License.'
     
     # Description
-    Description       = 'Enterprise driver and Windows update management for Dell and Lenovo endpoints. Supports individual driver updates, full pack reinstalls, and Windows cumulative updates with comprehensive logging.'
+    Description       = 'Enterprise driver and Windows update management for Dell and Lenovo endpoints. Supports individual driver updates, full pack reinstalls, Windows cumulative updates, update blocking/approval workflows, driver rollback, and offline catalog support.'
     
     # Minimum PowerShell version
     PowerShellVersion = '5.1'
@@ -53,6 +53,22 @@
         'Get-DellDriverUpdates'
         'Install-DellDriverUpdates'
         'Install-DellFullDriverPack'
+        'Install-DellCommandUpdate'
+        'Get-DCUInstallDetails'
+        'Get-DCUExitInfo'
+        'Get-DCUSettings'
+        'Set-DCUSettings'
+        'Get-DellCatalog'
+        'Get-LatestDCUVersion'
+        'Get-DCUCatalogPath'
+        'Set-DCUCatalogPath'
+        'New-DCUOfflineCatalog'
+        
+        # Dell driver restore
+        'Enable-DellDriverRestore'
+        'New-DellDriverRestorePoint'
+        'Get-DellDriverRestorePoints'
+        'Restore-DellDrivers'
         
         # Lenovo-specific
         'Get-LenovoDriverUpdates'
@@ -61,6 +77,32 @@
         
         # Windows Updates
         'Install-WindowsUpdates'
+        
+        # Update blocking
+        'Block-WindowsUpdate'
+        'Unblock-WindowsUpdate'
+        'Get-BlockedUpdates'
+        'Export-UpdateBlocklist'
+        'Import-UpdateBlocklist'
+        
+        # Driver rollback
+        'Get-RollbackableDrivers'
+        'Invoke-DriverRollback'
+        'New-DriverSnapshot'
+        'Get-DriverSnapshots'
+        'Get-DriverSnapshotDetails'
+        'Restore-DriverSnapshot'
+        'Remove-DriverSnapshot'
+        
+        # Update approval
+        'Get-UpdateApproval'
+        'Set-UpdateApproval'
+        'Test-UpdateApproval'
+        'Set-IntuneApprovalConfig'
+        'Sync-IntuneUpdateApproval'
+        'Set-ApprovalEndpoint'
+        'Sync-ExternalApproval'
+        'Send-UpdateReport'
         
         # Utility functions
         'Get-OEMInfo'
@@ -101,6 +143,9 @@
         'Public\Lenovo.ps1'
         'Public\WindowsUpdate.ps1'
         'Public\ScheduledTasks.ps1'
+        'Public\UpdateBlocking.ps1'
+        'Public\DriverRollback.ps1'
+        'Public\UpdateApproval.ps1'
         'Private\Logging.ps1'
         'Private\Utilities.ps1'
         'Private\VersionComparison.ps1'
@@ -124,6 +169,10 @@
                 'MDM'
                 'SCCM'
                 'Autopilot'
+                'Rollback'
+                'Approval'
+                'Blocking'
+                'Compliance'
             )
             
             # License URI
@@ -137,6 +186,34 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.3.0
+### New Features
+- **Windows Update Blocking**: Block/unblock updates by KB article ID using PSWindowsUpdate integration
+  - `Block-WindowsUpdate`, `Unblock-WindowsUpdate`, `Get-BlockedUpdates`
+  - `Export-UpdateBlocklist`, `Import-UpdateBlocklist` for portable blocklists
+  
+- **Driver Rollback System**: Multiple rollback mechanisms
+  - Device Manager integration: `Get-RollbackableDrivers`, `Invoke-DriverRollback`
+  - Dell advancedDriverRestore: `Enable-DellDriverRestore`, `New-DellDriverRestorePoint`, `Restore-DellDrivers`
+  - Driver snapshots: `New-DriverSnapshot`, `Restore-DriverSnapshot`, `Get-DriverSnapshots`
+  
+- **Update Approval Workflow**: Enterprise approval controls
+  - Local JSON blocklist: `Get-UpdateApproval`, `Set-UpdateApproval`, `Test-UpdateApproval`
+  - Intune integration: `Set-IntuneApprovalConfig`, `Sync-IntuneUpdateApproval`
+  - External API support: `Set-ApprovalEndpoint`, `Sync-ExternalApproval`
+  
+- **Dell Command Update Improvements** (inspired by Gary Blok's Dell-EMPS.ps1)
+  - Catalog-based version detection: `Get-DellCatalog`, `Get-LatestDCUVersion`
+  - Comprehensive exit code handling: `Get-DCUExitInfo` with 25+ documented codes
+  - Version check before download: `Get-DCUInstallDetails`
+  - Offline catalog support: `Set-DCUCatalogPath`, `New-DCUOfflineCatalog`
+  - Settings management: `Get-DCUSettings`, `Set-DCUSettings`
+
+### Environment Variables
+- `PSDM_DCU_URL`: Custom Dell Command Update download URL
+- `PSDM_DCU_CATALOG`: Custom DCU catalog path for offline use
+- `PSDM_APPROVAL_API`: External approval API endpoint
+
 ## Version 1.2.1
 - Added PSDM_DCU_URL environment variable for custom Dell Command Update download URL
 - Enables enterprises to host DCU on internal CDN/repository
