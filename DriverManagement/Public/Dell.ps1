@@ -147,7 +147,7 @@ function Get-DCUInstallDetails {
         try {
             $regData = Get-ItemProperty -Path $uwpReg -ErrorAction Stop
             $result.IsInstalled = $true
-            $result.Version = $regData.Version ?? $regData.ProductVersion
+            $result.Version = if ($regData.Version) { $regData.Version } else { $regData.ProductVersion }
             $result.AppType = 'Universal'
         }
         catch { }
@@ -159,7 +159,7 @@ function Get-DCUInstallDetails {
         try {
             $regData = Get-ItemProperty -Path $classicReg -ErrorAction Stop
             $result.IsInstalled = $true
-            $result.Version = $regData.Version ?? $regData.ProductVersion
+            $result.Version = if ($regData.Version) { $regData.Version } else { $regData.ProductVersion }
             $result.AppType = 'Classic'
         }
         catch { }
@@ -178,7 +178,7 @@ function Get-DCUInstallDetails {
         
         if ($dcu) {
             $result.IsInstalled = $true
-            $result.Version = $result.Version ?? $dcu.DisplayVersion
+            $result.Version = if ($result.Version) { $result.Version } else { $dcu.DisplayVersion }
             $result.InstallDate = $dcu.InstallDate
             break
         }

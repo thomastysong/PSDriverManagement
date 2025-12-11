@@ -208,9 +208,9 @@ function Test-UpdateApproval {
         
         # Extract identifiers from object
         if ($Update) {
-            $KBArticleID = $Update.KB ?? $Update.KBArticleID ?? $Update.HotFixID
-            $DriverInf = $Update.InfName ?? $Update.DriverInf
-            $UpdateName = $Update.Title ?? $Update.Name ?? $Update.UpdateName
+            $KBArticleID = if ($Update.KB) { $Update.KB } elseif ($Update.KBArticleID) { $Update.KBArticleID } else { $Update.HotFixID }
+            $DriverInf = if ($Update.InfName) { $Update.InfName } else { $Update.DriverInf }
+            $UpdateName = if ($Update.Title) { $Update.Title } elseif ($Update.Name) { $Update.Name } else { $Update.UpdateName }
         }
         
         # Normalize KB
@@ -219,7 +219,7 @@ function Test-UpdateApproval {
         }
         
         $result = [PSCustomObject]@{
-            Identifier = $KBArticleID ?? $DriverInf ?? $UpdateName
+            Identifier = if ($KBArticleID) { $KBArticleID } elseif ($DriverInf) { $DriverInf } else { $UpdateName }
             IsApproved = $true
             IsBlocked  = $false
             Reason     = 'Not in blocklist'
@@ -494,7 +494,7 @@ function Set-ApprovalEndpoint {
         Uri = $Uri.TrimEnd('/')
         Configured = $true
         ConfiguredDate = (Get-Date).ToString('o')
-        Headers = $Headers ?? @{}
+        Headers = if ($Headers) { $Headers } else { @{} }
     }
     
     if ($ApiKey) {
@@ -546,7 +546,7 @@ function Sync-ExternalApproval {
     $endpointConfig = Get-ExternalEndpointConfig
     
     # Allow environment variable override
-    $apiUri = $env:PSDM_APPROVAL_API ?? $endpointConfig.Uri
+    $apiUri = if ($env:PSDM_APPROVAL_API) { $env:PSDM_APPROVAL_API } else { $endpointConfig.Uri }
     
     if (-not $apiUri) {
         throw "External approval endpoint not configured. Run Set-ApprovalEndpoint or set PSDM_APPROVAL_API."
@@ -643,7 +643,7 @@ function Send-UpdateReport {
     
     process {
         $endpointConfig = Get-ExternalEndpointConfig
-        $apiUri = $env:PSDM_APPROVAL_API ?? $endpointConfig.Uri
+        $apiUri = if ($env:PSDM_APPROVAL_API) { $env:PSDM_APPROVAL_API } else { $endpointConfig.Uri }
         
         if (-not $apiUri) {
             Write-DriverLog -Message "External API not configured - skipping report" -Severity Warning

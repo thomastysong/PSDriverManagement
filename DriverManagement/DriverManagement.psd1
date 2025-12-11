@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.3.0'
+    ModuleVersion     = '1.3.1'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -186,6 +186,12 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.3.1
+### Bug Fixes
+- **PowerShell 5.1 Compatibility**: Fixed null-coalescing operator (`??`) usage that prevented module from loading in PowerShell 5.1
+  - Replaced all `??` operators with PowerShell 5.1-compatible `if/else` syntax
+  - Module now works correctly in both PowerShell 5.1 and PowerShell 7+
+
 ## Version 1.3.0
 ### New Features
 - **Windows Update Blocking**: Block/unblock updates by KB article ID using PSWindowsUpdate integration

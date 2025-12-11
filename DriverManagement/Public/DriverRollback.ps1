@@ -163,7 +163,7 @@ function Invoke-DriverRollback {
             throw "Device ID not found: $DeviceID"
         }
         
-        $displayName = $targetDevice.DeviceName ?? $DeviceID
+        $displayName = if ($targetDevice.DeviceName) { $targetDevice.DeviceName } else { $DeviceID }
         
         if ($PSCmdlet.ShouldProcess($displayName, "Rollback driver")) {
             Write-DriverLog -Message "Rolling back driver for: $displayName" -Severity Info `
