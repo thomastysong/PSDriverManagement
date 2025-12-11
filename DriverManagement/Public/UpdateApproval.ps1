@@ -112,7 +112,7 @@ function Set-UpdateApproval {
         foreach ($kb in $RemoveBlockedKB) {
             $normalizedKB = if ($kb -match '^KB') { $kb } else { "KB$kb" }
             if ($PSCmdlet.ShouldProcess($normalizedKB, "Remove from blocked KBs")) {
-                $config.BlockedKBs = @($config.BlockedKBs | Where-Object { $_ -ne $normalizedKB })
+                $config.BlockedKBs = @($config.BlockedKBs | Where-Object { $_ -ne $normalizedKB } | Where-Object { $null -ne $_ })
                 Write-DriverLog -Message "Removed $normalizedKB from blocklist" -Severity Info
             }
         }
@@ -133,7 +133,7 @@ function Set-UpdateApproval {
     if ($RemoveBlockedDriver) {
         foreach ($driver in $RemoveBlockedDriver) {
             if ($PSCmdlet.ShouldProcess($driver, "Remove from blocked drivers")) {
-                $config.BlockedDrivers = @($config.BlockedDrivers | Where-Object { $_ -ne $driver })
+                $config.BlockedDrivers = @($config.BlockedDrivers | Where-Object { $_ -ne $driver } | Where-Object { $null -ne $_ })
                 Write-DriverLog -Message "Removed $driver from driver blocklist" -Severity Info
             }
         }
@@ -154,7 +154,7 @@ function Set-UpdateApproval {
     if ($RemoveApprovedUpdate) {
         foreach ($update in $RemoveApprovedUpdate) {
             if ($PSCmdlet.ShouldProcess($update, "Remove from approved updates")) {
-                $config.ApprovedUpdates = @($config.ApprovedUpdates | Where-Object { $_ -ne $update })
+                $config.ApprovedUpdates = @($config.ApprovedUpdates | Where-Object { $_ -ne $update } | Where-Object { $null -ne $_ })
                 Write-DriverLog -Message "Removed $update from approved list" -Severity Info
             }
         }

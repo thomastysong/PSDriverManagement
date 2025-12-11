@@ -472,11 +472,11 @@ function Remove-FromLocalBlocklist {
     $blocklist = Get-LocalBlocklist
     
     if ($KBArticleID) {
-        $blocklist.BlockedKBs = @($blocklist.BlockedKBs | Where-Object { $_.KBArticleID -ne $KBArticleID })
+        $blocklist.BlockedKBs = @($blocklist.BlockedKBs | Where-Object { $_.KBArticleID -ne $KBArticleID } | Where-Object { $null -ne $_ })
     }
     
     if ($DriverInf) {
-        $blocklist.BlockedDrivers = @($blocklist.BlockedDrivers | Where-Object { $_ -ne $DriverInf })
+        $blocklist.BlockedDrivers = @($blocklist.BlockedDrivers | Where-Object { $_ -ne $DriverInf } | Where-Object { $null -ne $_ })
     }
     
     Save-LocalBlocklist -Blocklist $blocklist

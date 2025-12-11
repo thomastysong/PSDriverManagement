@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.3.1'
+    ModuleVersion     = '1.3.2'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -186,6 +186,11 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.3.2
+### Bug Fixes
+- Fixed array filtering bug where removing the last item from BlockedKBs, BlockedDrivers, or ApprovedUpdates would leave a null element instead of an empty array
+- Now properly filters out null values after Where-Object operations
+
 ## Version 1.3.1
 ### Bug Fixes
 - **PowerShell 5.1 Compatibility**: Fixed null-coalescing operator (`??`) usage that prevented module from loading in PowerShell 5.1
