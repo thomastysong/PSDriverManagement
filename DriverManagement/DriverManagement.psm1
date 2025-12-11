@@ -182,6 +182,16 @@ Export-ModuleMember -Function @(
     'Get-DellDriverUpdates'
     'Install-DellDriverUpdates'
     'Install-DellFullDriverPack'
+    'Install-DellCommandUpdate'
+    'Get-DCUInstallDetails'
+    'Get-DCUExitInfo'
+    'Get-DCUSettings'
+    'Set-DCUSettings'
+    'Get-DellCatalog'
+    'Get-LatestDCUVersion'
+    'Get-DCUCatalogPath'
+    'Set-DCUCatalogPath'
+    'New-DCUOfflineCatalog'
     
     # Lenovo-specific (Public/Lenovo.ps1)
     'Get-LenovoDriverUpdates'
@@ -190,6 +200,36 @@ Export-ModuleMember -Function @(
     
     # Windows Updates (Public/WindowsUpdate.ps1)
     'Install-WindowsUpdates'
+    
+    # Update blocking (Public/UpdateBlocking.ps1)
+    'Block-WindowsUpdate'
+    'Unblock-WindowsUpdate'
+    'Get-BlockedUpdates'
+    'Export-UpdateBlocklist'
+    'Import-UpdateBlocklist'
+    
+    # Update approval (Public/UpdateApproval.ps1)
+    'Get-UpdateApproval'
+    'Set-UpdateApproval'
+    'Test-UpdateApproval'
+    'Set-IntuneApprovalConfig'
+    'Sync-IntuneUpdateApproval'
+    'Set-ApprovalEndpoint'
+    'Sync-ExternalApproval'
+    'Send-UpdateReport'
+    
+    # Driver rollback (Public/DriverRollback.ps1)
+    'Get-RollbackableDrivers'
+    'Invoke-DriverRollback'
+    'New-DriverSnapshot'
+    'Get-DriverSnapshots'
+    'Get-DriverSnapshotDetails'
+    'Restore-DriverSnapshot'
+    'Remove-DriverSnapshot'
+    'Enable-DellDriverRestore'
+    'New-DellDriverRestorePoint'
+    'Get-DellDriverRestorePoints'
+    'Restore-DellDrivers'
     
     # Utility functions (Public/Get-OEMInfo.ps1)
     'Get-OEMInfo'
@@ -202,6 +242,7 @@ Export-ModuleMember -Function @(
     # Scheduled task management (Public/ScheduledTasks.ps1)
     'Register-DriverManagementTask'
     'Unregister-DriverManagementTask'
+    'Get-DriverManagementTask'
 ) -Alias @(
     'idm'
     'gdcs'
