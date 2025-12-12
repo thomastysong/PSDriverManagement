@@ -147,10 +147,18 @@ function Match-IntelDeviceToCatalog {
         if ($driver.deviceIds) {
             foreach ($deviceId in $driver.deviceIds) {
                 # Support wildcard matching (e.g., PCI\VEN_8086&DEV_*)
-                $pattern = $deviceId -replace '\*', '.*' -replace '\?', '.'
-                if ($Device.DeviceID -match $pattern -or $Device.HardwareID -match $pattern) {
-                    $match = $true
-                    break
+                # Escape special regex characters first, then replace wildcards
+                $escaped = [regex]::Escape($deviceId)
+                $pattern = $escaped -replace '\\\*', '.*' -replace '\\\?', '.'
+                try {
+                    if ($Device.DeviceID -match $pattern -or $Device.HardwareID -match $pattern) {
+                        $match = $true
+                        break
+                    }
+                }
+                catch {
+                    # Invalid regex pattern - skip this device ID
+                    Write-DriverLog -Message "Invalid device ID pattern: $deviceId - $($_.Exception.Message)" -Severity Warning
                 }
             }
         }

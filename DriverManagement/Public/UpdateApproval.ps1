@@ -309,12 +309,20 @@ function Test-UpdateApproval {
             foreach ($blockedPattern in $blockedIntelDevices) {
                 # Match by device ID pattern
                 if ($IntelDeviceID) {
-                    $pattern = $blockedPattern -replace '\*', '.*' -replace '\?', '.'
-                    if ($IntelDeviceID -match $pattern) {
-                        $result.IsApproved = $false
-                        $result.IsBlocked = $true
-                        $result.Reason = "Intel device $IntelDeviceID matches blocklist pattern: $blockedPattern"
-                        return $result
+                    try {
+                        # Escape special regex characters first, then replace wildcards
+                        $escaped = [regex]::Escape($blockedPattern)
+                        $pattern = $escaped -replace '\\\*', '.*' -replace '\\\?', '.'
+                        if ($IntelDeviceID -match $pattern) {
+                            $result.IsApproved = $false
+                            $result.IsBlocked = $true
+                            $result.Reason = "Intel device $IntelDeviceID matches blocklist pattern: $blockedPattern"
+                            return $result
+                        }
+                    }
+                    catch {
+                        # Invalid regex pattern - skip this pattern
+                        Write-DriverLog -Message "Invalid blocklist pattern: $blockedPattern - $($_.Exception.Message)" -Severity Warning
                     }
                 }
                 
