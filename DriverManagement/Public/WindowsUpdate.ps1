@@ -60,16 +60,25 @@ function Install-WindowsUpdates {
     }
     
     # Import module, suppressing alias warnings (they're harmless if module was already loaded)
-    try {
-        Import-Module PSWindowsUpdate -Force -ErrorAction Stop
-    }
-    catch {
-        # Re-throw if it's not an alias-related error
-        if ($_.Exception.Message -notmatch 'alias.*already exists') {
-            throw
+    # Redirect error output to suppress alias creation warnings
+    $ErrorActionPreference = 'SilentlyContinue'
+    $null = Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue 2>&1 | Where-Object {
+        # Filter out alias errors, but keep other errors
+        if ($_ -is [System.Management.Automation.ErrorRecord]) {
+            if ($_.Exception.Message -match 'alias.*already exists') {
+                return $false  # Suppress alias errors
+            }
         }
-        # For alias errors, try to continue - module may still be functional
-        Write-DriverLog -Message "PSWindowsUpdate alias warnings (harmless)" -Severity Warning
+        return $true  # Keep other errors
+    }
+    $ErrorActionPreference = 'Continue'
+    
+    # Verify module loaded successfully
+    if (-not (Get-Module -Name PSWindowsUpdate)) {
+        $result.Success = $false
+        $result.Message = "Failed to import PSWindowsUpdate module"
+        $result.ExitCode = 1
+        return $result
     }
     
     Write-DriverLog -Message "Scanning for Windows Updates" -Severity Info
