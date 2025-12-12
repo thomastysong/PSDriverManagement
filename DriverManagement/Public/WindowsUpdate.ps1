@@ -59,6 +59,14 @@ function Install-WindowsUpdates {
         Remove-Module -Name PSWindowsUpdate -Force -ErrorAction SilentlyContinue
     }
     
+    # Remove PSWindowsUpdate aliases if they exist (they persist after module removal)
+    $pswuAliases = @('Get-WUList', 'Get-WUInstall', 'Install-WindowsUpdate', 'Download-WindowsUpdate', 
+                     'Hide-WindowsUpdate', 'UnHide-WindowsUpdate', 'Show-WindowsUpdate', 
+                     'Uninstall-WindowsUpdate', 'Clear-WUJob')
+    foreach ($alias in $pswuAliases) {
+        Remove-Item -Path "Alias:$alias" -Force -ErrorAction SilentlyContinue
+    }
+    
     # Import module, suppressing alias warnings (they're harmless if module was already loaded)
     # Use error redirection to suppress alias creation warnings during import
     $originalErrorAction = $ErrorActionPreference
