@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.4.0'
+    ModuleVersion     = '1.4.1'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -196,6 +196,12 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.4.1
+### Bug Fixes
+- Fixed regex pattern escaping issue in Intel device ID matching
+- Device IDs with backslashes (e.g., `PCI\VEN_8086&DEV_*`) now properly escaped before regex matching
+- Prevents "Unrecognized escape sequence" errors when matching Intel devices
+
 ## Version 1.4.0
 ### New Features
 - **Intel Driver Management**: Full support for Intel driver detection, updates, and rollback
