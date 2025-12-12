@@ -388,18 +388,28 @@ function Initialize-PSWindowsUpdate {
     }
     
     # Import module, suppressing alias warnings (they're harmless if module was already loaded)
-    # Redirect error output to suppress alias creation warnings
+    # Use error redirection to suppress alias creation warnings during import
+    $originalErrorAction = $ErrorActionPreference
     $ErrorActionPreference = 'SilentlyContinue'
-    $null = Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue 2>&1 | Where-Object {
-        # Filter out alias errors, but keep other errors
+    
+    # Redirect all output and filter out alias errors
+    $importOutput = Import-Module PSWindowsUpdate -Force -ErrorAction SilentlyContinue -WarningAction SilentlyContinue 2>&1
+    
+    # Check if import actually failed (not just alias warnings)
+    $realErrors = $importOutput | Where-Object {
         if ($_ -is [System.Management.Automation.ErrorRecord]) {
-            if ($_.Exception.Message -match 'alias.*already exists') {
-                return $false  # Suppress alias errors
-            }
+            # Only keep errors that aren't alias-related
+            return $_.Exception.Message -notmatch 'alias.*already exists'
         }
-        return $true  # Keep other errors
+        return $false
     }
-    $ErrorActionPreference = 'Continue'
+    
+    $ErrorActionPreference = $originalErrorAction
+    
+    # If there were real errors (not just alias warnings), throw them
+    if ($realErrors) {
+        throw "Failed to import PSWindowsUpdate: $($realErrors[0].Exception.Message)"
+    }
     
     # Verify module loaded successfully
     if (-not (Get-Module -Name PSWindowsUpdate)) {
