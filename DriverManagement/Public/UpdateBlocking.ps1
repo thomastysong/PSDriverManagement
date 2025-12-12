@@ -382,7 +382,23 @@ function Initialize-PSWindowsUpdate {
         Install-Module -Name PSWindowsUpdate -Force -Scope AllUsers -ErrorAction Stop
     }
     
-    Import-Module PSWindowsUpdate -Force -ErrorAction Stop
+    # Remove module if already loaded to avoid alias conflicts
+    if (Get-Module -Name PSWindowsUpdate) {
+        Remove-Module -Name PSWindowsUpdate -Force -ErrorAction SilentlyContinue
+    }
+    
+    # Import module, suppressing alias warnings (they're harmless if module was already loaded)
+    try {
+        Import-Module PSWindowsUpdate -Force -ErrorAction Stop
+    }
+    catch {
+        # Re-throw if it's not an alias-related error
+        if ($_.Exception.Message -notmatch 'alias.*already exists') {
+            throw
+        }
+        # For alias errors, try to continue - module may still be functional
+        Write-DriverLog -Message "PSWindowsUpdate alias warnings (harmless)" -Severity Warning
+    }
 }
 
 function Get-LocalBlocklistPath {
