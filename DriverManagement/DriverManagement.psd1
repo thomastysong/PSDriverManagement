@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.3.3'
+    ModuleVersion     = '1.3.4'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -186,6 +186,12 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.3.4
+### Bug Fixes
+- Fixed PSWindowsUpdate alias warnings by removing aliases before reimport
+- Improved error suppression during module import to prevent harmless alias conflicts
+- Alias warnings no longer appear when calling Block-WindowsUpdate, Get-BlockedUpdates, etc.
+
 ## Version 1.3.3
 ### Bug Fixes
 - Fixed missing function exports: Block-WindowsUpdate, Get-UpdateApproval, and other UpdateBlocking/UpdateApproval functions were not exported
