@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.4.1'
+    ModuleVersion     = '1.4.2'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -196,6 +196,11 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.4.2
+### Bug Fixes
+- Fixed variable name conflict: renamed `$matches` to `$catalogMatches` to avoid conflict with PowerShell's automatic `$matches` variable
+- Prevents "A hash table can only be added to another hash table" error during Intel device matching
+
 ## Version 1.4.1
 ### Bug Fixes
 - Fixed regex pattern escaping issue in Intel device ID matching

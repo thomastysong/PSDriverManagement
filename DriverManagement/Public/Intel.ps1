@@ -138,10 +138,10 @@ function Match-IntelDeviceToCatalog {
         [hashtable]$Catalog
     )
     
-    $matches = @()
+    $catalogMatches = @()
     
     foreach ($driver in $Catalog.drivers) {
-        $match = $false
+        $isMatch = $false
         
         # Match by device IDs
         if ($driver.deviceIds) {
@@ -152,7 +152,7 @@ function Match-IntelDeviceToCatalog {
                 $pattern = $escaped -replace '\\\*', '.*' -replace '\\\?', '.'
                 try {
                     if ($Device.DeviceID -match $pattern -or $Device.HardwareID -match $pattern) {
-                        $match = $true
+                        $isMatch = $true
                         break
                     }
                 }
@@ -164,18 +164,18 @@ function Match-IntelDeviceToCatalog {
         }
         
         # Match by device class
-        if (-not $match -and $driver.deviceClass -and $Device.DeviceClass) {
+        if (-not $isMatch -and $driver.deviceClass -and $Device.DeviceClass) {
             if ($Device.DeviceClass -like "*$($driver.deviceClass)*") {
-                $match = $true
+                $isMatch = $true
             }
         }
         
-        if ($match) {
-            $matches += $driver
+        if ($isMatch) {
+            $catalogMatches += $driver
         }
     }
     
-    return $matches
+    return $catalogMatches
 }
 
 #endregion
