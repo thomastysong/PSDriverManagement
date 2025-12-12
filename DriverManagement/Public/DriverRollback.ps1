@@ -19,15 +19,22 @@ function Get-RollbackableDrivers {
         This occurs when Windows keeps the previous driver after an update.
     .PARAMETER DeviceClass
         Filter by device class (e.g., 'Display', 'Net', 'Media')
+    .PARAMETER IntelOnly
+        Only return Intel devices (VEN_8086)
     .EXAMPLE
         Get-RollbackableDrivers
     .EXAMPLE
         Get-RollbackableDrivers -DeviceClass 'Display'
+    .EXAMPLE
+        Get-RollbackableDrivers -IntelOnly
     #>
     [CmdletBinding()]
     param(
         [Parameter()]
-        [string]$DeviceClass
+        [string]$DeviceClass,
+        
+        [Parameter()]
+        [switch]$IntelOnly
     )
     
     $rollbackableDevices = @()
@@ -35,6 +42,16 @@ function Get-RollbackableDrivers {
     try {
         # Get all PnP devices with signed drivers
         $devices = Get-CimInstance -ClassName Win32_PnPSignedDriver -ErrorAction Stop
+        
+        # Filter for Intel devices if requested
+        if ($IntelOnly) {
+            $devices = $devices | Where-Object {
+                if (-not $_.DeviceID) { return $false }
+                ($_.DeviceID -match 'VEN_8086') -or 
+                ($_.Manufacturer -like '*Intel*') -or
+                ($_.DriverProviderName -like '*Intel*')
+            }
+        }
         
         if ($DeviceClass) {
             $devices = $devices | Where-Object { $_.DeviceClass -like "*$DeviceClass*" }
@@ -108,6 +125,57 @@ function Get-RollbackableDrivers {
     return $rollbackableDevices | Where-Object { $_.HasRollback -eq $true }
 }
 
+function Invoke-IntelDriverRollback {
+    <#
+    .SYNOPSIS
+        Rolls back Intel device drivers
+    .DESCRIPTION
+        Convenience function to rollback Intel drivers by device class or all Intel devices.
+    .PARAMETER DeviceClass
+        Rollback Intel drivers for specific device class (e.g., 'Display', 'Net')
+    .PARAMETER Force
+        Force rollback without confirmation
+    .EXAMPLE
+        Invoke-IntelDriverRollback -DeviceClass 'Display'
+    .EXAMPLE
+        Invoke-IntelDriverRollback  # Rollback all Intel devices
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [string]$DeviceClass,
+        
+        [Parameter()]
+        [switch]$Force
+    )
+    
+    Assert-Elevation -Operation "Rolling back Intel drivers"
+    
+    # Get Intel devices that are rollbackable
+    $intelDevices = Get-RollbackableDrivers -IntelOnly -DeviceClass $DeviceClass
+    
+    if ($intelDevices.Count -eq 0) {
+        Write-DriverLog -Message "No rollbackable Intel drivers found" -Severity Info
+        return @()
+    }
+    
+    $results = @()
+    
+    foreach ($device in $intelDevices) {
+        if ($PSCmdlet.ShouldProcess($device.DeviceName, "Rollback Intel driver")) {
+            try {
+                $rollbackResult = Invoke-DriverRollback -DeviceID $device.DeviceID -Force:$Force
+                $results += $rollbackResult
+            }
+            catch {
+                Write-DriverLog -Message "Failed to rollback $($device.DeviceName): $($_.Exception.Message)" -Severity Error
+            }
+        }
+    }
+    
+    return $results
+}
+
 function Invoke-DriverRollback {
     <#
     .SYNOPSIS
@@ -125,6 +193,8 @@ function Invoke-DriverRollback {
         Invoke-DriverRollback -DeviceID 'PCI\VEN_10DE&DEV_1C82&...'
     .EXAMPLE
         Get-RollbackableDrivers | Where-Object DeviceClass -eq 'Display' | Invoke-DriverRollback
+    .EXAMPLE
+        Get-RollbackableDrivers -IntelOnly | Invoke-DriverRollback
     #>
     [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'ByDeviceID')]
     param(

@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.3.4'
+    ModuleVersion     = '1.4.0'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -10,7 +10,7 @@
     Copyright         = '(c) 2024 Thomas Tyson. MIT License.'
     
     # Description
-    Description       = 'Enterprise driver and Windows update management for Dell and Lenovo endpoints. Supports individual driver updates, full pack reinstalls, Windows cumulative updates, update blocking/approval workflows, driver rollback, and offline catalog support.'
+    Description       = 'Enterprise driver and Windows update management for Dell, Lenovo, and Intel endpoints. Supports individual driver updates, full pack reinstalls, Windows cumulative updates, update blocking/approval workflows, driver rollback, and offline catalog support.'
     
     # Minimum PowerShell version
     PowerShellVersion = '5.1'
@@ -75,6 +75,12 @@
         'Install-LenovoDriverUpdates'
         'Install-LenovoFullDriverPack'
         
+        # Intel-specific
+        'Get-IntelDevices'
+        'Get-IntelDriverUpdates'
+        'Install-IntelDriverUpdates'
+        'Initialize-IntelModule'
+        
         # Windows Updates
         'Install-WindowsUpdates'
         
@@ -88,6 +94,7 @@
         # Driver rollback
         'Get-RollbackableDrivers'
         'Invoke-DriverRollback'
+        'Invoke-IntelDriverRollback'
         'New-DriverSnapshot'
         'Get-DriverSnapshots'
         'Get-DriverSnapshotDetails'
@@ -141,6 +148,7 @@
         'Public\Get-OEMInfo.ps1'
         'Public\Dell.ps1'
         'Public\Lenovo.ps1'
+        'Public\Intel.ps1'
         'Public\WindowsUpdate.ps1'
         'Public\ScheduledTasks.ps1'
         'Public\UpdateBlocking.ps1'
@@ -150,6 +158,7 @@
         'Private\Utilities.ps1'
         'Private\VersionComparison.ps1'
         'Classes\DriverManagementConfig.ps1'
+        'Config\intel_drivers.json'
         'en-US\about_DriverManagement.help.txt'
     )
     
@@ -162,6 +171,7 @@
                 'Windows'
                 'Dell'
                 'Lenovo'
+                'Intel'
                 'Intune'
                 'Enterprise'
                 'Updates'
@@ -186,6 +196,32 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.4.0
+### New Features
+- **Intel Driver Management**: Full support for Intel driver detection, updates, and rollback
+  - `Get-IntelDevices` - Detect Intel devices by vendor ID (VEN_8086) and device class
+  - `Get-IntelDriverUpdates` - Scan for available Intel driver updates using catalog-based approach
+  - `Install-IntelDriverUpdates` - Download and install Intel drivers with snapshot support
+  - `Initialize-IntelModule` - Initialize Intel driver management
+  - `Invoke-IntelDriverRollback` - Rollback Intel drivers by device class
+  - Catalog-based driver management (Config/intel_drivers.json) since Intel DSA has no CLI support
+- **Enhanced Orchestration**: `Invoke-DriverManagement` now supports Intel updates
+  - `-IncludeIntel` parameter (defaults to `$true` - auto-detect Intel devices)
+  - `-IntelOnly` parameter for Intel-only updates
+  - Intel updates run in parallel with OEM and Windows Updates
+- **Intel Update Approval**: Extended approval system for Intel drivers
+  - `-AddBlockedIntelDevice` and `-RemoveBlockedIntelDevice` parameters
+  - `Test-UpdateApproval` supports Intel device ID and device class checking
+- **Improved Non-OEM Support**: Better handling of non-Dell/Lenovo systems
+  - Pending reboot now warns instead of blocking updates
+  - Windows Updates and Intel updates proceed even when OEM is unsupported
+  - More graceful handling of systems without OEM support
+
+### Bug Fixes
+- Fixed pending reboot check to warn instead of blocking all updates
+- Fixed Windows Updates not running on non-Dell/Lenovo systems
+- Improved success/failure logic to accurately reflect what actually happened
+
 ## Version 1.3.4
 ### Bug Fixes
 - Fixed PSWindowsUpdate alias warnings by removing aliases before reimport

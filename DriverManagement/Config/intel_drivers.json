@@ -1,0 +1,78 @@
+{
+  "lastUpdated": "2024-01-15",
+  "drivers": [
+    {
+      "deviceClass": "Display",
+      "deviceIds": [
+        "PCI\\VEN_8086&DEV_*"
+      ],
+      "deviceName": "Intel Graphics",
+      "driverVersion": "31.0.101.5591",
+      "downloadUrl": "https://www.intel.com/content/www/us/en/download-center/home.html",
+      "releaseDate": "2024-01-15",
+      "severity": "Recommended",
+      "description": "Intel Graphics Driver - Check Intel Download Center for latest version"
+    },
+    {
+      "deviceClass": "Net",
+      "deviceIds": [
+        "PCI\\VEN_8086&DEV_*"
+      ],
+      "deviceName": "Intel Network Adapter",
+      "driverVersion": "28.5.0.0",
+      "downloadUrl": "https://www.intel.com/content/www/us/en/download-center/home.html",
+      "releaseDate": "2024-01-15",
+      "severity": "Recommended",
+      "description": "Intel Network Adapter Driver - Check Intel Download Center for latest version"
+    },
+    {
+      "deviceClass": "Media",
+      "deviceIds": [
+        "PCI\\VEN_8086&DEV_*"
+      ],
+      "deviceName": "Intel Audio",
+      "driverVersion": "10.29.0.0",
+      "downloadUrl": "https://www.intel.com/content/www/us/en/download-center/home.html",
+      "releaseDate": "2024-01-15",
+      "severity": "Recommended",
+      "description": "Intel Audio Driver - Check Intel Download Center for latest version"
+    },
+    {
+      "deviceClass": "Bluetooth",
+      "deviceIds": [
+        "PCI\\VEN_8086&DEV_*"
+      ],
+      "deviceName": "Intel Bluetooth",
+      "driverVersion": "22.240.0.0",
+      "downloadUrl": "https://www.intel.com/content/www/us/en/download-center/home.html",
+      "releaseDate": "2024-01-15",
+      "severity": "Recommended",
+      "description": "Intel Bluetooth Driver - Check Intel Download Center for latest version"
+    },
+    {
+      "deviceClass": "USB",
+      "deviceIds": [
+        "PCI\\VEN_8086&DEV_*"
+      ],
+      "deviceName": "Intel USB Controller",
+      "driverVersion": "10.1.0.0",
+      "downloadUrl": "https://www.intel.com/content/www/us/en/download-center/home.html",
+      "releaseDate": "2024-01-15",
+      "severity": "Optional",
+      "description": "Intel USB Controller Driver - Check Intel Download Center for latest version"
+    },
+    {
+      "deviceClass": "System",
+      "deviceIds": [
+        "PCI\\VEN_8086&DEV_*"
+      ],
+      "deviceName": "Intel Chipset",
+      "driverVersion": "10.1.0.0",
+      "downloadUrl": "https://www.intel.com/content/www/us/en/download-center/home.html",
+      "releaseDate": "2024-01-15",
+      "severity": "Recommended",
+      "description": "Intel Chipset Driver - Check Intel Download Center for latest version"
+    }
+  ]
+}
+

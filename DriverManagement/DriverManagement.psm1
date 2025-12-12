@@ -99,6 +99,7 @@ $publicFiles = @(
     'Public\Update-DriverComplianceStatus.ps1'
     'Public\Dell.ps1'
     'Public\Lenovo.ps1'
+    'Public\Intel.ps1'
     'Public\WindowsUpdate.ps1'
     'Public\ScheduledTasks.ps1'
     'Public\Invoke-DriverManagement.ps1'
@@ -198,6 +199,12 @@ Export-ModuleMember -Function @(
     'Install-LenovoDriverUpdates'
     'Install-LenovoFullDriverPack'
     
+    # Intel-specific (Public/Intel.ps1)
+    'Get-IntelDevices'
+    'Get-IntelDriverUpdates'
+    'Install-IntelDriverUpdates'
+    'Initialize-IntelModule'
+    
     # Windows Updates (Public/WindowsUpdate.ps1)
     'Install-WindowsUpdates'
     
@@ -221,6 +228,7 @@ Export-ModuleMember -Function @(
     # Driver rollback (Public/DriverRollback.ps1)
     'Get-RollbackableDrivers'
     'Invoke-DriverRollback'
+    'Invoke-IntelDriverRollback'
     'New-DriverSnapshot'
     'Get-DriverSnapshots'
     'Get-DriverSnapshotDetails'

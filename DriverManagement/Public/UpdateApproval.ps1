@@ -26,12 +26,13 @@ function Get-UpdateApproval {
     $config = Get-ApprovalConfig
     
     return [PSCustomObject]@{
-        ApprovedOnly    = $config.ApprovedOnly
-        BlockedKBs      = $config.BlockedKBs
-        BlockedDrivers  = $config.BlockedDrivers
-        ApprovedUpdates = $config.ApprovedUpdates
-        LastSynced      = $config.LastSynced
-        Source          = $config.Source
+        ApprovedOnly        = $config.ApprovedOnly
+        BlockedKBs         = $config.BlockedKBs
+        BlockedDrivers     = $config.BlockedDrivers
+        BlockedIntelDevices = if ($config.BlockedIntelDevices) { $config.BlockedIntelDevices } else { @() }
+        ApprovedUpdates    = $config.ApprovedUpdates
+        LastSynced         = $config.LastSynced
+        Source             = $config.Source
     }
 }
 
@@ -55,6 +56,10 @@ function Set-UpdateApproval {
         Update identifiers to add to the approved list
     .PARAMETER RemoveApprovedUpdate
         Update identifiers to remove from the approved list
+    .PARAMETER AddBlockedIntelDevice
+        Intel device IDs or device classes to block (e.g., 'PCI\VEN_8086&DEV_*', 'Display')
+    .PARAMETER RemoveBlockedIntelDevice
+        Intel device IDs or device classes to unblock
     .EXAMPLE
         Set-UpdateApproval -ApprovedOnly $true
     .EXAMPLE
@@ -83,7 +88,13 @@ function Set-UpdateApproval {
         [string[]]$AddApprovedUpdate,
         
         [Parameter()]
-        [string[]]$RemoveApprovedUpdate
+        [string[]]$RemoveApprovedUpdate,
+        
+        [Parameter()]
+        [string[]]$AddBlockedIntelDevice,
+        
+        [Parameter()]
+        [string[]]$RemoveBlockedIntelDevice
     )
     
     $config = Get-ApprovalConfig
@@ -160,6 +171,31 @@ function Set-UpdateApproval {
         }
     }
     
+    # Handle blocked Intel devices
+    if (-not $config.BlockedIntelDevices) {
+        $config | Add-Member -NotePropertyName 'BlockedIntelDevices' -NotePropertyValue @() -Force
+    }
+    
+    if ($AddBlockedIntelDevice) {
+        foreach ($device in $AddBlockedIntelDevice) {
+            if ($config.BlockedIntelDevices -notcontains $device) {
+                if ($PSCmdlet.ShouldProcess($device, "Add to blocked Intel devices")) {
+                    $config.BlockedIntelDevices = @($config.BlockedIntelDevices) + $device
+                    Write-DriverLog -Message "Added $device to Intel device blocklist" -Severity Info
+                }
+            }
+        }
+    }
+    
+    if ($RemoveBlockedIntelDevice) {
+        foreach ($device in $RemoveBlockedIntelDevice) {
+            if ($PSCmdlet.ShouldProcess($device, "Remove from blocked Intel devices")) {
+                $config.BlockedIntelDevices = @($config.BlockedIntelDevices | Where-Object { $_ -ne $device } | Where-Object { $null -ne $_ })
+                Write-DriverLog -Message "Removed $device from Intel device blocklist" -Severity Info
+            }
+        }
+    }
+    
     $config.Source = 'Local'
     Save-ApprovalConfig -Config $config
     
@@ -181,10 +217,16 @@ function Test-UpdateApproval {
         The update name/title to check
     .PARAMETER Update
         An update object with KB and/or Title properties
+    .PARAMETER IntelDeviceID
+        Intel device ID to check (e.g., 'PCI\VEN_8086&DEV_XXXX')
+    .PARAMETER IntelDeviceClass
+        Intel device class to check (e.g., 'Display', 'Net')
     .EXAMPLE
         Test-UpdateApproval -KBArticleID 'KB5001234'
     .EXAMPLE
         $update | Test-UpdateApproval
+    .EXAMPLE
+        Test-UpdateApproval -IntelDeviceID 'PCI\VEN_8086&DEV_1A03' -IntelDeviceClass 'Display'
     .OUTPUTS
         PSCustomObject with IsApproved, Reason properties
     #>
@@ -199,6 +241,12 @@ function Test-UpdateApproval {
         [Parameter(Mandatory, ParameterSetName = 'ByName')]
         [string]$UpdateName,
         
+        [Parameter(Mandatory, ParameterSetName = 'ByIntelDevice')]
+        [string]$IntelDeviceID,
+        
+        [Parameter(ParameterSetName = 'ByIntelDevice')]
+        [string]$IntelDeviceClass,
+        
         [Parameter(Mandatory, ParameterSetName = 'ByObject', ValueFromPipeline)]
         [PSObject]$Update
     )
@@ -211,6 +259,8 @@ function Test-UpdateApproval {
             $KBArticleID = if ($Update.KB) { $Update.KB } elseif ($Update.KBArticleID) { $Update.KBArticleID } else { $Update.HotFixID }
             $DriverInf = if ($Update.InfName) { $Update.InfName } else { $Update.DriverInf }
             $UpdateName = if ($Update.Title) { $Update.Title } elseif ($Update.Name) { $Update.Name } else { $Update.UpdateName }
+            $IntelDeviceID = if ($Update.DeviceID) { $Update.DeviceID } else { $Update.IntelDeviceID }
+            $IntelDeviceClass = if ($Update.DeviceClass) { $Update.DeviceClass } else { $Update.IntelDeviceClass }
         }
         
         # Normalize KB
@@ -219,7 +269,7 @@ function Test-UpdateApproval {
         }
         
         $result = [PSCustomObject]@{
-            Identifier = if ($KBArticleID) { $KBArticleID } elseif ($DriverInf) { $DriverInf } else { $UpdateName }
+            Identifier = if ($KBArticleID) { $KBArticleID } elseif ($DriverInf) { $DriverInf } elseif ($IntelDeviceID) { $IntelDeviceID } else { $UpdateName }
             IsApproved = $true
             IsBlocked  = $false
             Reason     = 'Not in blocklist'
@@ -247,6 +297,32 @@ function Test-UpdateApproval {
                     $result.IsApproved = $false
                     $result.IsBlocked = $true
                     $result.Reason = "Driver $DriverInf matches blocklist pattern: $pattern"
+                    return $result
+                }
+            }
+        }
+        
+        # Check Intel device blocklist
+        if ($IntelDeviceID -or $IntelDeviceClass) {
+            $blockedIntelDevices = if ($config.BlockedIntelDevices) { $config.BlockedIntelDevices } else { @() }
+            
+            foreach ($blockedPattern in $blockedIntelDevices) {
+                # Match by device ID pattern
+                if ($IntelDeviceID) {
+                    $pattern = $blockedPattern -replace '\*', '.*' -replace '\?', '.'
+                    if ($IntelDeviceID -match $pattern) {
+                        $result.IsApproved = $false
+                        $result.IsBlocked = $true
+                        $result.Reason = "Intel device $IntelDeviceID matches blocklist pattern: $blockedPattern"
+                        return $result
+                    }
+                }
+                
+                # Match by device class
+                if ($IntelDeviceClass -and $IntelDeviceClass -like "*$blockedPattern*") {
+                    $result.IsApproved = $false
+                    $result.IsBlocked = $true
+                    $result.Reason = "Intel device class $IntelDeviceClass matches blocklist pattern: $blockedPattern"
                     return $result
                 }
             }
@@ -722,6 +798,7 @@ function Get-ApprovalConfig {
         ApprovedOnly = $false
         BlockedKBs = @()
         BlockedDrivers = @()
+        BlockedIntelDevices = @()
         ApprovedUpdates = @()
         LastSynced = $null
         Source = 'Local'
