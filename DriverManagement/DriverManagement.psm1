@@ -184,6 +184,7 @@ Export-ModuleMember -Function @(
     'Install-DellDriverUpdates'
     'Install-DellFullDriverPack'
     'Install-DellCommandUpdate'
+    'Uninstall-DellSupportAssist'
     'Get-DCUInstallDetails'
     'Get-DCUExitInfo'
     'Get-DCUSettings'

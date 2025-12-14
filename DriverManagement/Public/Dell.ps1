@@ -190,6 +190,173 @@ function Get-DCUInstallDetails {
     return $result
 }
 
+#region Dell SupportAssist Handling
+
+function Get-DellSupportAssistInstallDetails {
+    <#
+    .SYNOPSIS
+        Detects Dell SupportAssist installations.
+    .DESCRIPTION
+        Searches Uninstall registry keys for SupportAssist-related products.
+        Returns entries with uninstall strings when available.
+    #>
+    [CmdletBinding()]
+    param()
+    
+    $results = @()
+    $uninstallPaths = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    )
+    
+    foreach ($path in $uninstallPaths) {
+        $items = Get-ItemProperty $path -ErrorAction SilentlyContinue | Where-Object {
+            $_.DisplayName -and (
+                $_.DisplayName -match 'SupportAssist' -or
+                $_.DisplayName -match 'Dell SupportAssist'
+            )
+        }
+        
+        foreach ($i in $items) {
+            $results += [PSCustomObject]@{
+                DisplayName          = $i.DisplayName
+                DisplayVersion       = $i.DisplayVersion
+                Publisher            = $i.Publisher
+                UninstallString      = $i.UninstallString
+                QuietUninstallString = $i.QuietUninstallString
+                ProductCodeOrKey     = $i.PSChildName
+            }
+        }
+    }
+    
+    # De-dupe by name/version
+    return $results | Sort-Object DisplayName, DisplayVersion -Unique
+}
+
+function Uninstall-DellSupportAssist {
+    <#
+    .SYNOPSIS
+        Uninstalls Dell SupportAssist if installed.
+    .DESCRIPTION
+        Best-effort silent uninstall using:
+        - QuietUninstallString if available
+        - MSI uninstall for GUID-based products
+        - WinGet uninstall fallback when possible
+    .PARAMETER Force
+        Attempt removal even if the Publisher does not look like Dell.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [switch]$Force
+    )
+    
+    Assert-Elevation -Operation "Uninstalling Dell SupportAssist"
+    
+    $installs = Get-DellSupportAssistInstallDetails
+    if (-not $installs -or $installs.Count -eq 0) {
+        Write-DriverLog -Message "Dell SupportAssist not detected" -Severity Info
+        return $true
+    }
+    
+    Write-DriverLog -Message "Dell SupportAssist detected ($($installs.Count) entries) - attempting uninstall" -Severity Warning `
+        -Context @{ Products = ($installs | Select-Object DisplayName, DisplayVersion, Publisher) }
+    
+    $allOk = $true
+    
+    foreach ($app in $installs) {
+        # Avoid removing unrelated “SupportAssist” unless forced or looks Dell-authored
+        if (-not $Force) {
+            if ($app.Publisher -and ($app.Publisher -notmatch 'Dell')) {
+                Write-DriverLog -Message "Skipping uninstall for $($app.DisplayName) (publisher: $($app.Publisher)) - use -Force to override" -Severity Warning
+                continue
+            }
+        }
+        
+        if (-not $PSCmdlet.ShouldProcess($app.DisplayName, "Uninstall")) { continue }
+        
+        try {
+            # 1) QuietUninstallString
+            if ($app.QuietUninstallString) {
+                Write-DriverLog -Message "Uninstalling via QuietUninstallString: $($app.DisplayName)" -Severity Info
+                $p = Start-Process -FilePath "cmd.exe" -ArgumentList @('/c', $app.QuietUninstallString) -Wait -PassThru -NoNewWindow
+                if ($p.ExitCode -ne 0) { throw "Quiet uninstall exit code $($p.ExitCode)" }
+                continue
+            }
+            
+            # 2) MSI GUID based uninstall
+            $guid = $null
+            if ($app.UninstallString -match '\{[0-9A-Fa-f-]{36}\}') {
+                $guid = $Matches[0]
+            }
+            elseif ($app.ProductCodeOrKey -match '^\{[0-9A-Fa-f-]{36}\}$') {
+                $guid = $app.ProductCodeOrKey
+            }
+            
+            if ($guid) {
+                Write-DriverLog -Message "Uninstalling via msiexec: $($app.DisplayName) ($guid)" -Severity Info
+                $args = @('/x', $guid, '/qn', '/norestart')
+                $p = Start-Process -FilePath "msiexec.exe" -ArgumentList $args -Wait -PassThru -NoNewWindow
+                if ($p.ExitCode -ne 0) { throw "msiexec exit code $($p.ExitCode)" }
+                continue
+            }
+            
+            # 3) UninstallString fallback (best effort)
+            if ($app.UninstallString) {
+                Write-DriverLog -Message "Uninstalling via UninstallString (best effort): $($app.DisplayName)" -Severity Info
+                $p = Start-Process -FilePath "cmd.exe" -ArgumentList @('/c', $app.UninstallString) -Wait -PassThru -NoNewWindow
+                if ($p.ExitCode -ne 0) { throw "UninstallString exit code $($p.ExitCode)" }
+                continue
+            }
+            
+            throw "No uninstall command available"
+        }
+        catch {
+            Write-DriverLog -Message "Registry uninstall failed for $($app.DisplayName): $($_.Exception.Message). Trying WinGet uninstall..." -Severity Warning
+            
+            try {
+                if (-not (Ensure-WinGetInternal -AutoInstall)) {
+                    throw "WinGet not available"
+                }
+                
+                $winget = Get-Command winget.exe -ErrorAction Stop
+                
+                # Try common IDs first; if not, attempt by name match
+                $candidateIds = @(
+                    'Dell.SupportAssist',
+                    'Dell.SupportAssistforBusinessPCs'
+                )
+                
+                $uninstalled = $false
+                foreach ($id in $candidateIds) {
+                    $p = Start-Process -FilePath $winget.Source -ArgumentList @('uninstall','-e','--id',$id,'--silent') -Wait -PassThru -NoNewWindow
+                    if ($p.ExitCode -eq 0) { $uninstalled = $true; break }
+                }
+                
+                if (-not $uninstalled) {
+                    # Name-based fallback (no exact match, but usually works)
+                    $p = Start-Process -FilePath $winget.Source -ArgumentList @('uninstall','--name','SupportAssist','--silent') -Wait -PassThru -NoNewWindow
+                    if ($p.ExitCode -eq 0) { $uninstalled = $true }
+                }
+                
+                if (-not $uninstalled) {
+                    throw "WinGet uninstall did not succeed"
+                }
+                
+                Write-DriverLog -Message "Dell SupportAssist removed via WinGet fallback: $($app.DisplayName)" -Severity Info
+            }
+            catch {
+                $allOk = $false
+                Write-DriverLog -Message "Failed to uninstall $($app.DisplayName): $($_.Exception.Message)" -Severity Error
+            }
+        }
+    }
+    
+    return $allOk
+}
+
+#endregion
+
 function Get-DellCatalog {
     <#
     .SYNOPSIS
@@ -402,6 +569,14 @@ function Install-DellCommandUpdate {
     )
     
     Assert-Elevation -Operation "Installing Dell Command Update"
+
+    # If SupportAssist is installed, remove it proactively (commonly causes conflicts / stale Dell tooling)
+    try {
+        Uninstall-DellSupportAssist | Out-Null
+    }
+    catch {
+        Write-DriverLog -Message "SupportAssist removal encountered an error but will not block DCU install: $($_.Exception.Message)" -Severity Warning
+    }
     
     $config = $script:ModuleConfig
     

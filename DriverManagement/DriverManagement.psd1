@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.4.8'
+    ModuleVersion     = '1.4.9'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -54,6 +54,7 @@
         'Install-DellDriverUpdates'
         'Install-DellFullDriverPack'
         'Install-DellCommandUpdate'
+        'Uninstall-DellSupportAssist'
         'Get-DCUInstallDetails'
         'Get-DCUExitInfo'
         'Get-DCUSettings'
@@ -215,6 +216,11 @@
 - WinGet auto-install now uses the community installer script:
   - `Invoke-WebRequest https://raw.githubusercontent.com/asheroto/winget-installer/master/winget-install.ps1 | iex`
 - This is typically more robust than a direct App Installer MSIX install in environments with missing dependencies.
+
+## Version 1.4.9
+### Improvements
+- Automatically uninstalls **Dell SupportAssist** (best-effort) before installing/updating Dell Command Update to avoid conflicts.
+- Adds public helper: `Uninstall-DellSupportAssist`
 
 ## Version 1.4.4
 ### New Features
