@@ -20,8 +20,10 @@ $script:DCUExitCodes = @{
     1    = @{ Description = "Reboot required"; Resolution = "Reboot the system to complete updates" }
     2    = @{ Description = "Unknown application error"; Resolution = "Check DCU logs for details" }
     3    = @{ Description = "Incomplete command line"; Resolution = "Verify command syntax" }
-    4    = @{ Description = "Invalid command line option"; Resolution = "Check available options" }
-    5    = @{ Description = "Unable to get admin privilege"; Resolution = "Run as administrator" }
+    # NOTE: Dell documentation for DCU 5.x indicates "not launched with administrative privileges" is exit code 4.
+    4    = @{ Description = "CLI was not launched with administrative privileges"; Resolution = "Run PowerShell/CLI as Administrator. If already elevated, check Dell services and ProgramData\\Dell permissions." }
+    # Exit code 5 meaning varies by DCU version/environment; we keep it actionable and add diagnostics elsewhere.
+    5    = @{ Description = "Privilege / qualification error"; Resolution = "If elevated, check Dell Client Management Service and ProgramData\\Dell folder permissions; review DCU logs." }
     6    = @{ Description = "No update filters found"; Resolution = "Check update type/severity filters" }
     7    = @{ Description = "Duplicate command line option"; Resolution = "Remove duplicate options" }
     8    = @{ Description = "Cannot create the scheduled task"; Resolution = "Check Task Scheduler permissions" }
@@ -117,6 +119,94 @@ function Get-DellCommandUpdatePath {
         "${env:ProgramFiles(x86)}\Dell\CommandUpdate\dcu-cli.exe"
     )
     return $paths | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+
+function Get-DellClientManagementServiceInternal {
+    [CmdletBinding()]
+    param()
+
+    # Known service names vary slightly by DCU generation; try the most common first.
+    $candidates = @(
+        'DellClientManagementService',
+        'DellCommandUpdateService',
+        'DellCommandUpdate',
+        'Dell Update Service'
+    )
+
+    foreach ($name in $candidates) {
+        $svc = Get-Service -Name $name -ErrorAction SilentlyContinue
+        if ($svc) { return $svc }
+    }
+
+    # Fallback: search by display name
+    $svc = Get-Service -ErrorAction SilentlyContinue | Where-Object {
+        $_.DisplayName -like '*Dell Client Management*' -or
+        $_.DisplayName -like '*Dell Command*Update*' -or
+        $_.DisplayName -like '*Dell Update Service*'
+    } | Select-Object -First 1
+
+    return $svc
+}
+
+function Ensure-DellClientManagementServiceInternal {
+    [CmdletBinding()]
+    param()
+
+    $svc = Get-DellClientManagementServiceInternal
+    if (-not $svc) {
+        return @{
+            Found = $false
+            Name = $null
+            DisplayName = $null
+            Status = $null
+            Started = $false
+            Message = "Dell Client Management / DCU service not found"
+        }
+    }
+
+    $started = $false
+    $message = "Service present"
+    try {
+        if ($svc.Status -ne 'Running') {
+            Start-Service -Name $svc.Name -ErrorAction Stop
+            $svc = Get-Service -Name $svc.Name -ErrorAction SilentlyContinue
+            $started = $svc -and $svc.Status -eq 'Running'
+            $message = if ($started) { "Service started" } else { "Service start attempted but status is $($svc.Status)" }
+        }
+    }
+    catch {
+        $message = "Failed to start service: $($_.Exception.Message)"
+    }
+
+    return @{
+        Found = $true
+        Name = $svc.Name
+        DisplayName = $svc.DisplayName
+        Status = $svc.Status.ToString()
+        Started = $started
+        Message = $message
+    }
+}
+
+function Test-WriteAccessInternal {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Path
+    )
+
+    try {
+        if (-not (Test-Path $Path)) {
+            New-Item -Path $Path -ItemType Directory -Force | Out-Null
+        }
+        $probe = Join-Path $Path ("dm_write_probe_{0}.tmp" -f ([guid]::NewGuid().ToString('n')))
+        'probe' | Set-Content -Path $probe -Encoding ASCII -Force
+        Remove-Item -Path $probe -Force -ErrorAction SilentlyContinue
+        return $true
+    }
+    catch {
+        return $false
+    }
 }
 
 function Get-DCUInstallDetails {
@@ -1676,10 +1766,31 @@ function Install-DellDriverUpdates {
     
     if ($PSCmdlet.ShouldProcess("Dell drivers", "Install updates")) {
         Write-DriverLog -Message "Installing Dell updates: $typeParam" -Severity Info
-        
+
+        # Pre-flight diagnostics that help explain "privilege" failures even when elevated.
+        $svcDiag = Ensure-DellClientManagementServiceInternal
+        $programDataDell = Join-Path $env:ProgramData 'Dell'
+        $programDataDellLogs = Join-Path $programDataDell 'Logs'
+        $pdDellWritable = Test-WriteAccessInternal -Path $programDataDell
+        $pdDellLogsWritable = Test-WriteAccessInternal -Path $programDataDellLogs
+        $isElevated = Test-IsElevated
+
         $applyResult = & $dcuCli @applyArgs 2>&1
         $exitCode = $LASTEXITCODE
-        
+
+        # Retry once on privilege-related exit codes after ensuring service/write access.
+        if ($exitCode -in @(4, 5)) {
+            Write-DriverLog -Message "DCU returned exit code $exitCode. Elevated=$isElevated. Retrying once after service/permission checks..." -Severity Warning `
+                -Context @{ DCUExitCode = $exitCode; Elevated = $isElevated; Service = $svcDiag; ProgramDataDellWritable = $pdDellWritable; ProgramDataDellLogsWritable = $pdDellLogsWritable }
+
+            $svcDiag = Ensure-DellClientManagementServiceInternal
+            $pdDellWritable = Test-WriteAccessInternal -Path $programDataDell
+            $pdDellLogsWritable = Test-WriteAccessInternal -Path $programDataDellLogs
+
+            $applyResult = & $dcuCli @applyArgs 2>&1
+            $exitCode = $LASTEXITCODE
+        }
+
         # Get detailed exit info
         $exitInfo = Get-DCUExitInfo -ExitCode $exitCode
         
@@ -1693,16 +1804,19 @@ function Install-DellDriverUpdates {
                 $result.Success = $true
                 $result.Message = "Updates applied successfully"
                 $result.RebootRequired = $false
+                $result.UpdatesApplied = 1
             }
             1 {
                 $result.Success = $true
                 $result.Message = "Updates applied - reboot required"
                 $result.RebootRequired = $true
+                $result.UpdatesApplied = 1
             }
             { $_ -in @(500, 18) } {
                 $result.Success = $true
                 $result.Message = "No applicable updates"
                 $result.RebootRequired = $false
+                $result.UpdatesApplied = 0
             }
             5 {
                 # Exit code 5 can mean admin privilege OR pending reboot (DCU bug)
@@ -1737,13 +1851,22 @@ function Install-DellDriverUpdates {
                 # Include the actual exit code in the message for better debugging
                 $result.Message = "$($exitInfo.Description) (DCU exit code: $exitCode) - $($exitInfo.Resolution)"
                 $result.RebootRequired = $false
+                $result.UpdatesFailed = 1
             }
         }
         
         $result.ExitCode = if ($result.RebootRequired) { 3010 } elseif ($result.Success) { 0 } else { 1 }
-        $result.Details = @{ DCUExitCode = $exitCode; DCUExitInfo = $exitInfo }
+        $result.Details = @{
+            DCUExitCode = $exitCode
+            DCUExitInfo = $exitInfo
+            Elevated = $isElevated
+            Service = $svcDiag
+            ProgramDataDellWritable = $pdDellWritable
+            ProgramDataDellLogsWritable = $pdDellLogsWritable
+        }
         
-        Write-DriverLog -Message "Dell update complete: $($result.Message)" -Severity Info `
+        $sev = if ($result.Success) { 'Info' } else { 'Error' }
+        Write-DriverLog -Message "Dell update complete: $($result.Message)" -Severity $sev `
             -Context $result.ToHashtable()
     }
     

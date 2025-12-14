@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.4.9'
+    ModuleVersion     = '1.5.0'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -200,6 +200,12 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.5.0
+### Bug Fixes
+- **DCU Privilege Error Handling**: Fixed issue where `Invoke-DriverManagement` reported `Success=True` even when Dell Command Update failed with privilege/permission errors (exit codes 4, 5).
+- **Failure Propagation**: Orchestrator now correctly propagates failures from OEM/Intel/Windows Update providers when `UpdatesApplied=0` instead of silently marking as success.
+- **Improved Exit Code Descriptions**: Updated DCU exit codes 4 and 5 with more actionable resolution guidance (check Dell Client Management Service, ProgramData\\Dell permissions).
+
 ## Version 1.4.5
 ### Improvements
 - **Dynamic Intel updates (Graphics/Wireless)**: Intel driver updates now use Intel DSA’s public data feed (`dsadata.intel.com/data/en`) to:

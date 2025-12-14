@@ -243,6 +243,18 @@ function Invoke-DriverManagement {
             # If no updates were applied at all, set appropriate message
             # But only set Success = $true if there wasn't already a failure
             if ($result.UpdatesApplied -eq 0) {
+                # If any provider explicitly failed, do not mark the overall run as success.
+                # (Previously we treated "0 updates applied" as success even when OEM/Intel/WU failed.)
+                $anyProviderFailed = $false
+                foreach ($providerKey in @('OEMResult', 'IntelResult', 'WindowsUpdateResult')) {
+                    if (-not $result.Details.ContainsKey($providerKey)) { continue }
+                    $provider = $result.Details[$providerKey]
+                    if ($provider -is [hashtable] -and $provider.ContainsKey('Success') -and $provider.Success -eq $false) {
+                        $anyProviderFailed = $true
+                        break
+                    }
+                }
+
                 if (-not $oemInfo.IsSupported -and $intelDevices.Count -eq 0 -and -not $IncludeWindowsUpdates) {
                     if (-not $result.Message) {
                         $result.Message = "No OEM support, no Intel devices, and Windows Updates not requested"
@@ -253,9 +265,15 @@ function Invoke-DriverManagement {
                         $result.Message = "No OEM support and no Intel devices detected"
                     }
                 }
-                # Only set Success = $true if it wasn't already set to $false by a failure
-                # This prevents overwriting failure status from OEM/Intel/Windows update errors
-                if ($result.Success -eq $null -or ($result.Success -eq $true -and -not $result.Message)) {
+                # Handle success/failure based on provider results
+                if ($anyProviderFailed) {
+                    # Keep the provider's message (if already set), but ensure overall status reflects failure.
+                    if (-not $result.Message) {
+                        $result.Message = "No updates applied - one or more update providers failed"
+                    }
+                    $result.Success = $false
+                }
+                elseif ($result.Success -eq $null -or ($result.Success -eq $true -and -not $result.Message)) {
                     $result.Success = $true  # Not an error, just nothing to update
                 }
             }
