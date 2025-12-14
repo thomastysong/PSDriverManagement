@@ -194,6 +194,10 @@ Export-ModuleMember -Function @(
     'Get-DCUCatalogPath'
     'Set-DCUCatalogPath'
     'New-DCUOfflineCatalog'
+    'Get-DellDriverPackUrl'
+    'Install-DellDriverPackDirect'
+    'Test-DellOOBEBlocked'
+    'Clear-DellOOBEFlag'
     
     # Lenovo-specific (Public/Lenovo.ps1)
     'Get-LenovoDriverUpdates'

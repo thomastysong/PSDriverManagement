@@ -16,37 +16,38 @@
 
 # Comprehensive DCU exit codes per Dell documentation
 $script:DCUExitCodes = @{
-    0   = @{ Description = "Command execution successful"; Resolution = "None required" }
-    1   = @{ Description = "Reboot required"; Resolution = "Reboot the system to complete updates" }
-    2   = @{ Description = "Unknown application error"; Resolution = "Check DCU logs for details" }
-    3   = @{ Description = "Incomplete command line"; Resolution = "Verify command syntax" }
-    4   = @{ Description = "Invalid command line option"; Resolution = "Check available options" }
-    5   = @{ Description = "Unable to get admin privilege"; Resolution = "Run as administrator" }
-    6   = @{ Description = "No update filters found"; Resolution = "Check update type/severity filters" }
-    7   = @{ Description = "Duplicate command line option"; Resolution = "Remove duplicate options" }
-    8   = @{ Description = "Cannot create the scheduled task"; Resolution = "Check Task Scheduler permissions" }
-    9   = @{ Description = "Cannot remove the scheduled task"; Resolution = "Check Task Scheduler permissions" }
-    10  = @{ Description = "Download failed, no update(s) to apply"; Resolution = "Check network connectivity" }
-    11  = @{ Description = "Suspend Bitlocker failed"; Resolution = "Manually suspend BitLocker" }
-    12  = @{ Description = "Another instance of DCU running"; Resolution = "Wait for other instance to complete" }
-    13  = @{ Description = "Invalid catalog file"; Resolution = "Re-download or regenerate catalog" }
-    14  = @{ Description = "Unable to schedule updates"; Resolution = "Check scheduled task configuration" }
-    15  = @{ Description = "Invalid export file format"; Resolution = "Check export file path/format" }
-    16  = @{ Description = "Invalid password"; Resolution = "Verify BIOS password" }
-    17  = @{ Description = "System is not supported"; Resolution = "Verify Dell system compatibility" }
-    18  = @{ Description = "No updates available"; Resolution = "System is up to date" }
-    19  = @{ Description = "Network error"; Resolution = "Check network connectivity to Dell servers" }
-    20  = @{ Description = "Catalog sync failed"; Resolution = "Check internet connectivity" }
-    21  = @{ Description = "Running in OS pre-boot"; Resolution = "Run after Windows boot completes" }
-    500 = @{ Description = "No updates available"; Resolution = "System is up to date" }
-    501 = @{ Description = "Soft dependency error"; Resolution = "Check for prerequisite updates" }
-    502 = @{ Description = "Hard dependency error"; Resolution = "Install prerequisite updates first" }
-    503 = @{ Description = "Already running"; Resolution = "Wait for other DCU instance" }
-    504 = @{ Description = "System reboot pending"; Resolution = "Reboot system first" }
-    505 = @{ Description = "Rollback"; Resolution = "Update failed and was rolled back" }
-    506 = @{ Description = "Update failed"; Resolution = "Check DCU logs for failure details" }
-    507 = @{ Description = "Download progress"; Resolution = "Update is still downloading" }
-    508 = @{ Description = "Install progress"; Resolution = "Update is still installing" }
+    0    = @{ Description = "Command execution successful"; Resolution = "None required" }
+    1    = @{ Description = "Reboot required"; Resolution = "Reboot the system to complete updates" }
+    2    = @{ Description = "Unknown application error"; Resolution = "Check DCU logs for details" }
+    3    = @{ Description = "Incomplete command line"; Resolution = "Verify command syntax" }
+    4    = @{ Description = "Invalid command line option"; Resolution = "Check available options" }
+    5    = @{ Description = "Unable to get admin privilege"; Resolution = "Run as administrator" }
+    6    = @{ Description = "No update filters found"; Resolution = "Check update type/severity filters" }
+    7    = @{ Description = "Duplicate command line option"; Resolution = "Remove duplicate options" }
+    8    = @{ Description = "Cannot create the scheduled task"; Resolution = "Check Task Scheduler permissions" }
+    9    = @{ Description = "Cannot remove the scheduled task"; Resolution = "Check Task Scheduler permissions" }
+    10   = @{ Description = "Download failed, no update(s) to apply"; Resolution = "Check network connectivity" }
+    11   = @{ Description = "Suspend Bitlocker failed"; Resolution = "Manually suspend BitLocker" }
+    12   = @{ Description = "Another instance of DCU running"; Resolution = "Wait for other instance to complete" }
+    13   = @{ Description = "Invalid catalog file"; Resolution = "Re-download or regenerate catalog" }
+    14   = @{ Description = "Unable to schedule updates"; Resolution = "Check scheduled task configuration" }
+    15   = @{ Description = "Invalid export file format"; Resolution = "Check export file path/format" }
+    16   = @{ Description = "Invalid password"; Resolution = "Verify BIOS password" }
+    17   = @{ Description = "System is not supported"; Resolution = "Verify Dell system compatibility" }
+    18   = @{ Description = "No updates available"; Resolution = "System is up to date" }
+    19   = @{ Description = "Network error"; Resolution = "Check network connectivity to Dell servers" }
+    20   = @{ Description = "Catalog sync failed"; Resolution = "Check internet connectivity" }
+    21   = @{ Description = "Running in OS pre-boot"; Resolution = "Run after Windows boot completes" }
+    500  = @{ Description = "No updates available"; Resolution = "System is up to date" }
+    501  = @{ Description = "Soft dependency error"; Resolution = "Check for prerequisite updates" }
+    502  = @{ Description = "Hard dependency error"; Resolution = "Install prerequisite updates first" }
+    503  = @{ Description = "Already running"; Resolution = "Wait for other DCU instance" }
+    504  = @{ Description = "System reboot pending"; Resolution = "Reboot system first" }
+    505  = @{ Description = "Rollback"; Resolution = "Update failed and was rolled back" }
+    506  = @{ Description = "Update failed"; Resolution = "Check DCU logs for failure details" }
+    507  = @{ Description = "Download progress"; Resolution = "Update is still downloading" }
+    508  = @{ Description = "Install progress"; Resolution = "Update is still installing" }
+    3006 = @{ Description = "System in Windows OOBE state"; Resolution = "Complete Windows setup first, then try again" }
 }
 
 function Get-DCUExitInfo {
@@ -1124,6 +1125,353 @@ function New-DCUOfflineCatalog {
 
 #endregion
 
+#region OOBE Detection and Direct Driver Installation
+
+function Test-DellOOBEBlocked {
+    <#
+    .SYNOPSIS
+        Checks if Dell Command Update is blocked due to OOBE state
+    .OUTPUTS
+        $true if OOBE blocking is active, $false otherwise
+    #>
+    [CmdletBinding()]
+    param()
+    
+    $regPath = "HKLM:\SOFTWARE\Dell\UpdateService\Service\UpdateScheduler"
+    $regName = "IsFirstScanAfterOOBEPending"
+    
+    try {
+        $value = (Get-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue).$regName
+        return ($value -eq 1)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-DellDriverPackUrl {
+    <#
+    .SYNOPSIS
+        Gets the Dell driver pack download URL for the current system
+    .DESCRIPTION
+        Queries Dell's Driver Pack Catalog to find the driver pack CAB/EXE for the 
+        current system model. This is used for direct driver installation during OOBE.
+        Reference: https://www.dell.com/support/kbdoc/en-us/000122176/driver-pack-catalog
+    .OUTPUTS
+        PSCustomObject with Url, FileName, SystemID, Model, and OS info
+    #>
+    [CmdletBinding()]
+    param()
+    
+    # Get system info
+    $systemInfo = Get-CimInstance -ClassName Win32_ComputerSystem
+    $osInfo = Get-CimInstance -ClassName Win32_OperatingSystem
+    
+    # Get SystemSKU (Dell SystemID) and Model Name
+    $systemId = $systemInfo.SystemSKUNumber
+    $modelName = $systemInfo.Model
+    
+    # Get OS version info (Windows 10 = 10.0, Windows 11 = 10.0 with build >= 22000)
+    $osMajor = [System.Environment]::OSVersion.Version.Major
+    $osMinor = [System.Environment]::OSVersion.Version.Minor
+    $osBuild = [System.Environment]::OSVersion.Version.Build
+    $osArch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+    
+    Write-DriverLog -Message "Looking up driver pack for Model: $modelName, SystemID: $systemId, OS: $osMajor.$osMinor (Build $osBuild) $osArch" -Severity Info
+    
+    # Download the Dell Driver Pack Catalog (different from CatalogIndexPC.cab!)
+    $cabPath = "$env:TEMP\DriverPackCatalog_$(Get-Date -Format 'yyyyMMdd').cab"
+    $xmlPath = "$env:TEMP\DriverPackCatalog_$(Get-Date -Format 'yyyyMMdd').xml"
+    
+    try {
+        if (-not (Test-Path $cabPath)) {
+            Write-DriverLog -Message "Downloading Dell Driver Pack Catalog" -Severity Info
+            Invoke-WebRequest -Uri "https://downloads.dell.com/catalog/DriverPackCatalog.cab" -OutFile $cabPath -UseBasicParsing -ErrorAction Stop
+        }
+        
+        # Extract catalog XML
+        if (-not (Test-Path $xmlPath)) {
+            & expand.exe $cabPath $xmlPath 2>&1 | Out-Null
+        }
+        
+        if (-not (Test-Path $xmlPath)) {
+            throw "Failed to extract DriverPackCatalog.xml"
+        }
+        
+        [xml]$catalogXml = Get-Content $xmlPath
+        $baseLocation = $catalogXml.DriverPackManifest.baseLocation
+        
+        # Find driver pack by SystemID or Model Name, matching OS version and architecture
+        $matchingPacks = $catalogXml.DriverPackManifest.DriverPackage | Where-Object {
+            # Match by SystemID or Model Name
+            $sysMatch = ($_.SupportedSystems.Brand.Model.systemID -eq $systemId) -or
+                        ($_.SupportedSystems.Brand.Model.name -eq $modelName)
+            
+            # Match OS (not WinPE)
+            $osMatch = ($_.type -ne "WinPE") -and
+                       ($_.SupportedOperatingSystems.OperatingSystem.majorVersion -eq $osMajor) -and
+                       ($_.SupportedOperatingSystems.OperatingSystem.osArch -eq $osArch)
+            
+            $sysMatch -and $osMatch
+        }
+        
+        if (-not $matchingPacks) {
+            # Try matching just by model name without strict OS match
+            $matchingPacks = $catalogXml.DriverPackManifest.DriverPackage | Where-Object {
+                (($_.SupportedSystems.Brand.Model.systemID -eq $systemId) -or
+                 ($_.SupportedSystems.Brand.Model.name -eq $modelName)) -and
+                ($_.type -ne "WinPE")
+            }
+        }
+        
+        if (-not $matchingPacks) {
+            Write-DriverLog -Message "No driver pack found for Model: $modelName (SystemID: $systemId)" -Severity Warning
+            return $null
+        }
+        
+        # Get the first/best match
+        $bestPack = $matchingPacks | Select-Object -First 1
+        
+        $packUrl = "https://$baseLocation/$($bestPack.path)"
+        $fileName = Split-Path $bestPack.path -Leaf
+        
+        Write-DriverLog -Message "Found driver pack: $fileName (Release: $($bestPack.releaseID))" -Severity Info
+        
+        return [PSCustomObject]@{
+            Url = $packUrl
+            FileName = $fileName
+            SystemID = $systemId
+            Model = $modelName
+            ReleaseID = $bestPack.releaseID
+            DellVersion = $bestPack.dellVersion
+            Size = $bestPack.size
+            HashMD5 = $bestPack.hashMD5
+        }
+    }
+    catch {
+        Write-DriverLog -Message "Failed to get driver pack URL: $($_.Exception.Message)" -Severity Error
+        return $null
+    }
+}
+
+function Install-DellDriverPackDirect {
+    <#
+    .SYNOPSIS
+        Downloads and installs Dell drivers directly from the driver pack
+    .DESCRIPTION
+        For use during OOBE when DCU is blocked. Downloads the Dell Driver Pack EXE,
+        extracts it to get CAB with drivers, then installs using pnputil.exe.
+        Reference: https://www.dell.com/support/kbdoc/en-us/000122176/driver-pack-catalog
+    .PARAMETER NoReboot
+        Suppress automatic reboot
+    .OUTPUTS
+        DriverUpdateResult object
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    [OutputType('DriverUpdateResult')]
+    param(
+        [Parameter()]
+        [switch]$NoReboot
+    )
+    
+    Assert-Elevation -Operation "Installing Dell drivers directly"
+    
+    $result = [DriverUpdateResult]::new()
+    $result.CorrelationId = $script:CorrelationId
+    
+    Write-DriverLog -Message "DCU blocked by OOBE - using direct driver pack installation" -Severity Info
+    
+    try {
+        # Get driver pack URL from Dell's Driver Pack Catalog
+        $packInfo = Get-DellDriverPackUrl
+        if (-not $packInfo) {
+            $result.Success = $false
+            $result.Message = "Could not find driver pack for this system in Dell's Driver Pack Catalog"
+            $result.ExitCode = 1
+            return $result
+        }
+        
+        # Setup paths
+        $downloadPath = "$env:ProgramData\PSDriverManagement\DellDriverPack"
+        $packPath = Join-Path $downloadPath $packInfo.FileName
+        $extractPath = Join-Path $downloadPath "Extracted_$($packInfo.ReleaseID)"
+        
+        if (-not (Test-Path $downloadPath)) {
+            New-Item -Path $downloadPath -ItemType Directory -Force | Out-Null
+        }
+        
+        # Download driver pack if not cached
+        if (-not (Test-Path $packPath)) {
+            Write-DriverLog -Message "Downloading driver pack: $($packInfo.FileName) ($([math]::Round([long]$packInfo.Size / 1MB, 0)) MB)" -Severity Info
+            Write-DriverLog -Message "URL: $($packInfo.Url)" -Severity Info
+            
+            # Try BITS first for reliable large file download
+            try {
+                Start-BitsTransfer -Source $packInfo.Url -Destination $packPath -ErrorAction Stop
+            }
+            catch {
+                Write-DriverLog -Message "BITS failed, using WebRequest" -Severity Warning
+                Invoke-WebRequest -Uri $packInfo.Url -OutFile $packPath -UseBasicParsing -ErrorAction Stop
+            }
+        }
+        
+        if (-not (Test-Path $packPath)) {
+            throw "Driver pack download failed"
+        }
+        
+        $packSize = (Get-Item $packPath).Length / 1MB
+        Write-DriverLog -Message "Driver pack ready: $('{0:N0}' -f $packSize) MB" -Severity Info
+        
+        # Verify hash if available
+        if ($packInfo.HashMD5) {
+            $actualHash = (Get-FileHash -Path $packPath -Algorithm MD5).Hash
+            if ($actualHash -ne $packInfo.HashMD5) {
+                Write-DriverLog -Message "Hash mismatch! Expected: $($packInfo.HashMD5), Got: $actualHash" -Severity Warning
+                # Continue anyway - hash might be outdated in catalog
+            }
+        }
+        
+        # Extract the driver pack EXE (Dell driver packs are self-extracting)
+        if (-not (Test-Path $extractPath)) {
+            New-Item -Path $extractPath -ItemType Directory -Force | Out-Null
+            
+            Write-DriverLog -Message "Extracting driver pack to: $extractPath" -Severity Info
+            
+            # Dell driver pack EXE supports /s (silent) and /e=<path> (extract to path)
+            $extractProcess = Start-Process -FilePath $packPath -ArgumentList "/s /e=`"$extractPath`"" -Wait -PassThru -NoNewWindow
+            
+            if ($extractProcess.ExitCode -ne 0) {
+                Write-DriverLog -Message "Extraction via EXE failed (exit: $($extractProcess.ExitCode)), trying expand.exe" -Severity Warning
+                # Fallback: try expand.exe in case it's a CAB
+                & expand.exe $packPath -F:* $extractPath 2>&1 | Out-Null
+            }
+        }
+        
+        # Find all INF files in the extracted folder
+        $infFiles = Get-ChildItem -Path $extractPath -Filter "*.inf" -Recurse -ErrorAction SilentlyContinue
+        
+        if (-not $infFiles -or $infFiles.Count -eq 0) {
+            throw "No driver INF files found in extracted pack"
+        }
+        
+        Write-DriverLog -Message "Found $($infFiles.Count) driver INF files" -Severity Info
+        
+        $driversInstalled = 0
+        $driversFailed = 0
+        $driversSkipped = 0
+        
+        # Install each driver using pnputil
+        foreach ($inf in $infFiles) {
+            if ($PSCmdlet.ShouldProcess($inf.Name, "Install driver")) {
+                try {
+                    # Use pnputil to add and install the driver
+                    $pnpOutput = & pnputil.exe /add-driver $inf.FullName /install 2>&1
+                    $pnpExit = $LASTEXITCODE
+                    
+                    if ($pnpExit -eq 0) {
+                        $driversInstalled++
+                    }
+                    elseif ($pnpExit -eq 259) {
+                        # 259 = No more data available (driver already installed or not applicable)
+                        $driversSkipped++
+                    }
+                    else {
+                        $driversFailed++
+                        Write-DriverLog -Message "Failed to install $($inf.Name): exit code $pnpExit" -Severity Warning
+                    }
+                }
+                catch {
+                    $driversFailed++
+                    Write-DriverLog -Message "Exception installing $($inf.Name): $($_.Exception.Message)" -Severity Warning
+                }
+            }
+        }
+        
+        $result.Success = ($driversInstalled -gt 0) -or ($driversSkipped -eq $infFiles.Count)
+        $result.UpdatesApplied = $driversInstalled
+        $result.UpdatesFailed = $driversFailed
+        $result.Message = "Direct driver pack install: $driversInstalled installed, $driversSkipped skipped (not applicable), $driversFailed failed"
+        $result.ExitCode = if ($result.Success) { 0 } else { 1 }
+        $result.RebootRequired = $driversInstalled -gt 0
+        $result.Details['DriverPack'] = $packInfo.FileName
+        $result.Details['DirectInstall'] = $true
+        
+        Write-DriverLog -Message $result.Message -Severity Info
+    }
+    catch {
+        $result.Success = $false
+        $result.Message = "Direct driver installation failed: $($_.Exception.Message)"
+        $result.ExitCode = 1
+        Write-DriverLog -Message $result.Message -Severity Error
+    }
+    
+    return $result
+}
+
+function Clear-DellOOBEFlag {
+    <#
+    .SYNOPSIS
+        Clears the Dell OOBE flag to allow DCU to run during Windows setup
+    .DESCRIPTION
+        Dell Command Update blocks operations when it detects the system is in OOBE
+        (Out of Box Experience) state. This function clears the registry flag that
+        indicates OOBE is pending, allowing DCU to run during provisioning scenarios.
+    .PARAMETER Force
+        Suppress confirmation prompts
+    .EXAMPLE
+        Clear-DellOOBEFlag
+    .NOTES
+        Requires elevation. This is a workaround for running DCU during Windows provisioning.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [switch]$Force
+    )
+    
+    Assert-Elevation -Operation "Clearing Dell OOBE flag"
+    
+    $regPath = "HKLM:\SOFTWARE\Dell\UpdateService\Service\UpdateScheduler"
+    $regName = "IsFirstScanAfterOOBEPending"
+    
+    if (-not (Test-Path $regPath)) {
+        Write-DriverLog -Message "Dell UpdateService registry path not found" -Severity Warning
+        return $false
+    }
+    
+    try {
+        $currentValue = (Get-ItemProperty -Path $regPath -Name $regName -ErrorAction SilentlyContinue).$regName
+        
+        if ($currentValue -eq 0) {
+            Write-DriverLog -Message "OOBE flag already cleared" -Severity Info
+            return $true
+        }
+        
+        if ($Force -or $PSCmdlet.ShouldProcess("Dell OOBE Flag", "Clear to allow DCU during provisioning")) {
+            Set-ItemProperty -Path $regPath -Name $regName -Value 0 -Type DWord -Force
+            
+            # Also restart the Dell Client Management Service to pick up the change
+            $service = Get-Service -Name "DellClientManagementService" -ErrorAction SilentlyContinue
+            if ($service -and $service.Status -eq 'Running') {
+                Write-DriverLog -Message "Restarting Dell Client Management Service" -Severity Info
+                Restart-Service -Name "DellClientManagementService" -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+            }
+            
+            Write-DriverLog -Message "Dell OOBE flag cleared - DCU should now work during provisioning" -Severity Info
+            return $true
+        }
+        
+        return $false
+    }
+    catch {
+        Write-DriverLog -Message "Failed to clear OOBE flag: $($_.Exception.Message)" -Severity Error
+        return $false
+    }
+}
+
+#endregion
+
 #region Core Functions
 
 function Initialize-DellModule {
@@ -1370,9 +1718,24 @@ function Install-DellDriverUpdates {
                     $result.RebootRequired = $false
                 }
             }
+            3006 {
+                # System is in Windows OOBE (Out of Box Experience) - DCU is blocked
+                # Fall back to direct driver pack installation
+                Write-DriverLog -Message "DCU blocked by OOBE state - falling back to direct driver pack installation" -Severity Warning
+                
+                $directResult = Install-DellDriverPackDirect -NoReboot:$NoReboot
+                
+                $result.Success = $directResult.Success
+                $result.Message = $directResult.Message
+                $result.UpdatesApplied = $directResult.UpdatesApplied
+                $result.UpdatesFailed = $directResult.UpdatesFailed
+                $result.RebootRequired = $directResult.RebootRequired
+                $result.Details['DirectInstall'] = $true
+            }
             default {
                 $result.Success = $false
-                $result.Message = "$($exitInfo.Description) - $($exitInfo.Resolution)"
+                # Include the actual exit code in the message for better debugging
+                $result.Message = "$($exitInfo.Description) (DCU exit code: $exitCode) - $($exitInfo.Resolution)"
                 $result.RebootRequired = $false
             }
         }

@@ -64,6 +64,10 @@
         'Get-DCUCatalogPath'
         'Set-DCUCatalogPath'
         'New-DCUOfflineCatalog'
+        'Get-DellDriverPackUrl'
+        'Install-DellDriverPackDirect'
+        'Test-DellOOBEBlocked'
+        'Clear-DellOOBEFlag'
         
         # Dell driver restore
         'Enable-DellDriverRestore'
