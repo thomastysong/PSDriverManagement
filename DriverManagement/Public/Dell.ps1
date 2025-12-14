@@ -637,14 +637,12 @@ function Get-LatestDCUVersion {
 function Install-DellCommandUpdate {
     <#
     .SYNOPSIS
-        Downloads and installs Dell Command Update
+        Installs Dell Command Update via WinGet
     .DESCRIPTION
-        Automatically downloads the latest Dell Command Update from Dell's website
-        and performs a silent installation. Checks if update is needed first.
+        Installs Dell Command Update using WinGet (winget install Dell.CommandUpdate).
+        WinGet is auto-installed if missing. SupportAssist is removed first to prevent conflicts.
     .PARAMETER Force
         Install even if current version is up to date
-    .PARAMETER Version
-        Specific version to install (default: latest)
     .EXAMPLE
         Install-DellCommandUpdate
     .EXAMPLE
@@ -669,8 +667,6 @@ function Install-DellCommandUpdate {
         Write-DriverLog -Message "SupportAssist removal encountered an error but will not block DCU install: $($_.Exception.Message)" -Severity Warning
     }
     
-    $config = $script:ModuleConfig
-    
     # Check if update is needed
     if (-not $Force) {
         $installed = Get-DCUInstallDetails
@@ -680,98 +676,40 @@ function Install-DellCommandUpdate {
             
             if (-not $latestInfo.UpdateAvailable) {
                 Write-DriverLog -Message "Dell Command Update is already up to date (v$($installed.Version))" -Severity Info
-                return
+                return [PSCustomObject]@{
+                    Success = $true
+                    ExitCode = 0
+                    Message = "Already up to date (v$($installed.Version))"
+                    RebootRequired = $false
+                }
             }
             
             Write-DriverLog -Message "Update available: $($installed.Version) -> $($latestInfo.Version)" -Severity Info
         }
     }
     
-    # Determine download URL
-    # Priority: 1) Environment variable, 2) Module config, 3) Catalog lookup, 4) Default
-    $dcuUrl = if ($env:PSDM_DCU_URL) {
-        Write-DriverLog -Message "Using DCU URL from environment variable" -Severity Info
-        $env:PSDM_DCU_URL
-    } elseif ($config.DellCommandUpdateUrl) {
-        $config.DellCommandUpdateUrl
-    } else {
-        # Try to get from catalog
-        $latestInfo = Get-LatestDCUVersion
-        if ($latestInfo.DownloadUrl) {
-            $latestInfo.DownloadUrl
-        } else {
-            "https://dl.dell.com/FOLDER11914155M/1/Dell-Command-Update-Windows-Universal-Application_601KT_WIN_5.4.0_A00.EXE"
-        }
-    }
-    
-    $installerPath = Join-Path $env:TEMP "DellCommandUpdate_$(Get-Date -Format 'yyyyMMddHHmmss').exe"
-    
-    Write-DriverLog -Message "Downloading Dell Command Update from $dcuUrl" -Severity Info
+    # Install via WinGet (primary and only method - Dell direct downloads often blocked by Akamai/403)
+    Write-DriverLog -Message "Installing Dell Command Update via WinGet (Dell.CommandUpdate)..." -Severity Info
     
     try {
-        # Download with retry logic
-        Invoke-WithRetry -ScriptBlock {
-            # Use BITS for reliable download, fallback to WebRequest
-            try {
-                Start-BitsTransfer -Source $dcuUrl -Destination $installerPath -ErrorAction Stop
-            }
-            catch {
-                Invoke-WebRequest -Uri $dcuUrl -OutFile $installerPath -UseBasicParsing -ErrorAction Stop
-            }
-        } -MaxAttempts 3 -ExponentialBackoff
-        
-        if (-not (Test-Path $installerPath)) {
-            throw "Download failed - installer not found"
+        if (-not (Ensure-WinGetInternal -AutoInstall)) {
+            throw "WinGet is not available and could not be installed automatically"
         }
         
-        $fileSize = (Get-Item $installerPath).Length / 1MB
-        Write-DriverLog -Message "Downloaded DCU installer ($([math]::Round($fileSize, 1)) MB)" -Severity Info
-        
-        # Silent install
-        Write-DriverLog -Message "Installing Dell Command Update silently..." -Severity Info
-        
-        $installProcess = Start-Process -FilePath $installerPath -ArgumentList "/s" -Wait -PassThru -NoNewWindow
-        $exitCode = $installProcess.ExitCode
-        
-        # Interpret exit code
-        $exitInfo = Get-DCUExitInfo -ExitCode $exitCode
-        
-        if ($exitCode -eq 0) {
-            Write-DriverLog -Message "Dell Command Update installed successfully" -Severity Info
-        }
-        elseif ($exitCode -eq 1) {
-            Write-DriverLog -Message "Dell Command Update installed - reboot required" -Severity Warning
-        }
-        else {
-            throw "Installation failed: $($exitInfo.Description) (Exit: $exitCode)"
+        $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+        if (-not $winget) {
+            throw "winget.exe not found after auto-install attempt"
         }
         
-        return [PSCustomObject]@{
-            Success = $exitCode -in @(0, 1)
-            ExitCode = $exitCode
-            Message = $exitInfo.Description
-            RebootRequired = ($exitCode -eq 1)
-        }
-    }
-    catch {
-        # Fallback: install via WinGet if Dell download is blocked (common 403/Akamai)
-        Write-DriverLog -Message "Failed to install Dell Command Update via direct download: $($_.Exception.Message). Trying WinGet (Dell.CommandUpdate)..." -Severity Warning
+        # Use exact ID match for Dell Command Update
+        $wingetArgs = @('install', '-e', '--id', 'Dell.CommandUpdate', '--silent', '--accept-package-agreements', '--accept-source-agreements')
         
-        try {
-            if (-not (Ensure-WinGetInternal -AutoInstall)) {
-                throw "WinGet is not available and could not be installed automatically"
-            }
-            
-            $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
-            if (-not $winget) {
-                throw "winget.exe not found"
-            }
-            
-            # Prefer exact ID match
-            $args = @('install','-e','--id','Dell.CommandUpdate','--silent','--accept-package-agreements','--accept-source-agreements')
-            $p = Start-Process -FilePath $winget.Source -ArgumentList $args -Wait -PassThru -NoNewWindow
-            
-            if ($p.ExitCode -eq 0) {
+        Write-DriverLog -Message "Running: winget $($wingetArgs -join ' ')" -Severity Info
+        
+        $p = Start-Process -FilePath $winget.Source -ArgumentList $wingetArgs -Wait -PassThru -NoNewWindow
+        
+        switch ($p.ExitCode) {
+            0 {
                 Write-DriverLog -Message "Dell Command Update installed successfully via WinGet" -Severity Info
                 return [PSCustomObject]@{
                     Success = $true
@@ -780,19 +718,24 @@ function Install-DellCommandUpdate {
                     RebootRequired = $false
                 }
             }
-            
-            throw "WinGet install failed with exit code $($p.ExitCode)"
-        }
-        catch {
-            Write-DriverLog -Message "Failed to install Dell Command Update via WinGet fallback: $($_.Exception.Message)" -Severity Error
-            throw
+            { $_ -eq -1978335189 -or $_ -eq 0x8A150011 } {
+                # APPINSTALLER_CLI_ERROR_PACKAGE_ALREADY_INSTALLED (same version already installed)
+                Write-DriverLog -Message "Dell Command Update is already installed (same version)" -Severity Info
+                return [PSCustomObject]@{
+                    Success = $true
+                    ExitCode = 0
+                    Message = "Already installed"
+                    RebootRequired = $false
+                }
+            }
+            default {
+                throw "WinGet install failed with exit code $($p.ExitCode)"
+            }
         }
     }
-    finally {
-        # Cleanup installer
-        if (Test-Path $installerPath) {
-            Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
-        }
+    catch {
+        Write-DriverLog -Message "Failed to install Dell Command Update via WinGet: $($_.Exception.Message)" -Severity Error
+        throw
     }
 }
 

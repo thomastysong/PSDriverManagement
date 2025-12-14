@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.5.0'
+    ModuleVersion     = '1.5.1'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -200,6 +200,10 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.5.1
+### Improvements
+- **DCU Install via WinGet Only**: `Install-DellCommandUpdate` now uses WinGet exclusively (`winget install Dell.CommandUpdate`), skipping direct Dell downloads which are frequently blocked (403 Forbidden). This is faster and more reliable.
+
 ## Version 1.5.0
 ### Bug Fixes
 - **DCU Privilege Error Handling**: Fixed issue where `Invoke-DriverManagement` reported `Success=True` even when Dell Command Update failed with privilege/permission errors (exit codes 4, 5).
