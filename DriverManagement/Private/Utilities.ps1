@@ -67,6 +67,38 @@ function Invoke-WithRetry {
     }
 }
 
+function Initialize-TlsForDownloads {
+    <#
+    .SYNOPSIS
+        Ensures modern TLS protocols are enabled for outbound HTTPS requests.
+    .DESCRIPTION
+        Some endpoints (including Intel download hosts) reject older TLS defaults,
+        which can cause: "The underlying connection was closed: An unexpected error occurred on a send."
+        This function enables TLS 1.2 in the current PowerShell process.
+    #>
+    [CmdletBinding()]
+    param()
+    
+    try {
+        $current = [System.Net.ServicePointManager]::SecurityProtocol
+        # Always include TLS 1.2 if available
+        if ([enum]::GetNames([System.Net.SecurityProtocolType]) -contains 'Tls12') {
+            $current = $current -bor [System.Net.SecurityProtocolType]::Tls12
+        }
+        # Best-effort: keep TLS 1.1 if present (some older middleboxes)
+        if ([enum]::GetNames([System.Net.SecurityProtocolType]) -contains 'Tls11') {
+            $current = $current -bor [System.Net.SecurityProtocolType]::Tls11
+        }
+        [System.Net.ServicePointManager]::SecurityProtocol = $current
+        
+        # Reduce edge-case HTTP behavior problems
+        [System.Net.ServicePointManager]::Expect100Continue = $false
+    }
+    catch {
+        # Non-fatal; continue without TLS tuning
+    }
+}
+
 function Test-PendingReboot {
     <#
     .SYNOPSIS
@@ -138,6 +170,9 @@ function Start-DownloadWithVerification {
     
     $jobName = "DriverDownload-$(Get-Date -Format 'yyyyMMddHHmmss')"
     
+    # Ensure TLS is modern enough for common download hosts
+    Initialize-TlsForDownloads
+    
     try {
         # Use BITS for resilient download
         $job = Start-BitsTransfer -Source $SourceUrl -Destination $DestinationPath -Asynchronous `
@@ -179,6 +214,7 @@ function Start-DownloadWithVerification {
         Write-DriverLog -Message "BITS failed, falling back to Invoke-WebRequest" -Severity Warning
         
         Invoke-WithRetry -ScriptBlock {
+            Initialize-TlsForDownloads
             Invoke-WebRequest -Uri $SourceUrl -OutFile $DestinationPath -UseBasicParsing -ErrorAction Stop
         } -MaxAttempts 3 -ExponentialBackoff
         

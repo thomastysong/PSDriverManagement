@@ -82,6 +82,38 @@ function Get-IntelDevices {
 
 #endregion
 
+#region Intel Download Helpers (internal)
+
+function Get-IntelDownloadFileName {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Url,
+        
+        [Parameter()]
+        [string]$DefaultBaseName = 'intel_driver'
+    )
+    
+    $leaf = $null
+    try {
+        $u = [uri]$Url
+        $leaf = [System.IO.Path]::GetFileName($u.AbsolutePath)
+    }
+    catch {
+        $leaf = Split-Path $Url -Leaf
+    }
+    
+    if ([string]::IsNullOrWhiteSpace($leaf)) {
+        $leaf = "$DefaultBaseName.bin"
+    }
+    
+    # Sanitize invalid filename characters (handles URLs with query strings, etc.)
+    $leaf = $leaf -replace '[<>:"/\\|?*]', '_'
+    return $leaf
+}
+
+#endregion
+
 #region Intel Driver Catalog
 
 function Get-IntelDriverCatalog {
@@ -355,24 +387,18 @@ function Install-IntelDriverUpdates {
                 $tempPath = Join-Path $env:TEMP "IntelDriver_$(Get-Random)"
                 New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
                 
-                $driverFile = Join-Path $tempPath (Split-Path $update.DownloadUrl -Leaf)
+                $fileName = Get-IntelDownloadFileName -Url $update.DownloadUrl -DefaultBaseName ($update.DeviceName -replace '\s+', '_')
+                $driverFile = Join-Path $tempPath $fileName
                 
                 Write-DriverLog -Message "Downloading from: $($update.DownloadUrl)" -Severity Info
                 
-                try {
-                    Invoke-WebRequest -Uri $update.DownloadUrl -OutFile $driverFile -UseBasicParsing -ErrorAction Stop
-                }
-                catch {
-                    # Try with certificate validation bypass for some Intel URLs
-                    $originalCertPolicy = [System.Net.ServicePointManager]::ServerCertificateValidationCallback
-                    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-                    try {
-                        Invoke-WebRequest -Uri $update.DownloadUrl -OutFile $driverFile -UseBasicParsing -ErrorAction Stop
+                # Use the module's resilient downloader (BITS + retry + web fallback) and ensure TLS 1.2
+                Invoke-WithRetry -ScriptBlock {
+                    Start-DownloadWithVerification -SourceUrl $update.DownloadUrl -DestinationPath $driverFile | Out-Null
+                    if (-not (Test-Path $driverFile)) {
+                        throw "Download failed - file not found after download"
                     }
-                    finally {
-                        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $originalCertPolicy
-                    }
-                }
+                } -MaxAttempts 3 -ExponentialBackoff
                 
                 # Extract if it's a ZIP
                 if ($driverFile -match '\.zip$') {
@@ -445,7 +471,8 @@ function Install-IntelDriverUpdates {
             }
             catch {
                 $failed++
-                Write-DriverLog -Message "Failed to install $($update.DeviceName): $($_.Exception.Message)" -Severity Error
+                Write-DriverLog -Message "Failed to install $($update.DeviceName): $($_.Exception.Message)" -Severity Error `
+                    -Context @{ DeviceName = $update.DeviceName; DownloadUrl = $update.DownloadUrl; InstalledVersion = $update.InstalledVersion; AvailableVersion = $update.AvailableVersion }
             }
         }
         
@@ -514,7 +541,14 @@ function Initialize-IntelModule {
     
     $status.Initialized = $true
     
-    Write-DriverLog -Message $status.Message -Severity Info -Context $status
+    # Write-DriverLog requires a hashtable for -Context
+    $logContext = @{
+        Initialized     = $status.Initialized
+        DevicesDetected = $status.DevicesDetected
+        CatalogLoaded   = $status.CatalogLoaded
+        CatalogPath     = $status.CatalogPath
+    }
+    Write-DriverLog -Message $status.Message -Severity Info -Context $logContext
     
     return $status
 }

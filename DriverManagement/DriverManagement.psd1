@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.4.2'
+    ModuleVersion     = '1.4.3'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -196,6 +196,11 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.4.3
+### Bug Fixes
+- Hardened Intel driver downloads by enabling TLS 1.2 and reusing the module's resilient downloader (BITS + retry + fallback).
+- Fixed `Initialize-IntelModule` logging error where `Write-DriverLog -Context` was passed a PSCustomObject instead of a hashtable.
+
 ## Version 1.4.2
 ### Bug Fixes
 - Fixed variable name conflict: renamed `$matches` to `$catalogMatches` to avoid conflict with PowerShell's automatic `$matches` variable
