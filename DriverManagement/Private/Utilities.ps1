@@ -250,23 +250,31 @@ function Install-WinGetInternal {
     # If already present, nothing to do
     if (Test-WinGetAvailableInternal) { return $true }
     
-    $bundleUrl = 'https://aka.ms/getwinget'
-    $bundlePath = Join-Path $env:TEMP "Microsoft.DesktopAppInstaller_$(Get-Date -Format 'yyyyMMddHHmmss').msixbundle"
+    # Use a community-maintained installer script which handles common WinGet install edge cases
+    # (dependencies, App Installer packaging, etc.)
+    $installerScriptUrl = 'https://raw.githubusercontent.com/asheroto/winget-installer/master/winget-install.ps1'
+    $scriptPath = Join-Path $env:TEMP "winget-install_$(Get-Date -Format 'yyyyMMddHHmmss').ps1"
     
     try {
-        Write-DriverLog -Message "WinGet not found. Downloading App Installer from aka.ms/getwinget" -Severity Warning
+        Write-DriverLog -Message "WinGet not found. Attempting WinGet installation via asheroto/winget-installer script" -Severity Warning `
+            -Context @{ Url = $installerScriptUrl }
         
-        Start-DownloadWithVerification -SourceUrl $bundleUrl -DestinationPath $bundlePath | Out-Null
-        if (-not (Test-Path $bundlePath)) {
-            throw "Download failed - MSIXBundle not found"
+        Start-DownloadWithVerification -SourceUrl $installerScriptUrl -DestinationPath $scriptPath | Out-Null
+        if (-not (Test-Path $scriptPath)) {
+            throw "Download failed - winget-install.ps1 not found"
         }
         
-        Write-DriverLog -Message "Installing App Installer (WinGet) via Add-AppxPackage" -Severity Info
-        Add-AppxPackage -Path $bundlePath -ErrorAction Stop | Out-Null
+        Write-DriverLog -Message "Running winget installer script (ExecutionPolicy Bypass)" -Severity Info
+        # Run in a separate PowerShell process to avoid policy/state issues in the current session
+        $psExe = (Get-Command powershell.exe -ErrorAction Stop).Source
+        $p = Start-Process -FilePath $psExe -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-File', $scriptPath) -Wait -PassThru -NoNewWindow
+        if ($p.ExitCode -ne 0) {
+            throw "winget installer script failed with exit code $($p.ExitCode)"
+        }
         
         Start-Sleep -Seconds 2
         if (-not (Test-WinGetAvailableInternal)) {
-            throw "WinGet still not available after Add-AppxPackage"
+            throw "WinGet still not available after installer script"
         }
         
         Write-DriverLog -Message "WinGet installed successfully" -Severity Info
@@ -277,7 +285,7 @@ function Install-WinGetInternal {
         return $false
     }
     finally {
-        Remove-Item -Path $bundlePath -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $scriptPath -Force -ErrorAction SilentlyContinue
     }
 }
 
