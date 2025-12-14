@@ -204,6 +204,9 @@ Export-ModuleMember -Function @(
     'Get-IntelDriverUpdates'
     'Install-IntelDriverUpdates'
     'Initialize-IntelModule'
+    'Test-IntelDSAInstalled'
+    'Install-IntelDSA'
+    'Test-IntelDownloadUrl'
     
     # Windows Updates (Public/WindowsUpdate.ps1)
     'Install-WindowsUpdates'

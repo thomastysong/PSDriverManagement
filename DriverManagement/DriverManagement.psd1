@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.4.3'
+    ModuleVersion     = '1.4.4'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -80,6 +80,9 @@
         'Get-IntelDriverUpdates'
         'Install-IntelDriverUpdates'
         'Initialize-IntelModule'
+        'Test-IntelDSAInstalled'
+        'Install-IntelDSA'
+        'Test-IntelDownloadUrl'
         
         # Windows Updates
         'Install-WindowsUpdates'
@@ -196,6 +199,18 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.4.4
+### New Features
+- **Intel DSA Integration**: Added support for Intel Driver & Support Assistant
+  - `Test-IntelDSAInstalled` - Check if Intel DSA is installed
+  - `Install-IntelDSA` - Download and install Intel DSA silently
+  - `Test-IntelDownloadUrl` - Validate if catalog URLs are real driver downloads
+- **Smarter Intel Updates**: Catalog-based updates now skip placeholder URLs and suggest installing Intel DSA
+
+### Improvements
+- Intel driver installation now gracefully handles placeholder URLs in the catalog
+- Better messaging when catalog URLs point to Intel download center homepage instead of actual drivers
+
 ## Version 1.4.3
 ### Bug Fixes
 - Hardened Intel driver downloads by enabling TLS 1.2 and reusing the module's resilient downloader (BITS + retry + fallback).

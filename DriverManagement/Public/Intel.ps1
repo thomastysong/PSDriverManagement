@@ -380,7 +380,14 @@ function Install-IntelDriverUpdates {
         $rebootRequired = $false
         
         foreach ($update in $updates) {
-            Write-DriverLog -Message "Installing: $($update.DeviceName) ($($update.InstalledVersion) -> $($update.AvailableVersion))" -Severity Info
+            Write-DriverLog -Message "Processing: $($update.DeviceName) ($($update.InstalledVersion) -> $($update.AvailableVersion))" -Severity Info
+            
+            # Check if the download URL is a placeholder (Intel homepage, not a real driver)
+            if (-not (Test-IntelDownloadUrl -Url $update.DownloadUrl)) {
+                Write-DriverLog -Message "Skipping $($update.DeviceName) - catalog URL is placeholder (use Install-IntelDSA for Intel's official tool)" -Severity Warning
+                $result.Details["Skipped_$($update.DeviceName)"] = "Placeholder URL - install Intel DSA for real updates"
+                continue
+            }
             
             try {
                 # Download driver
@@ -476,10 +483,25 @@ function Install-IntelDriverUpdates {
             }
         }
         
+        # Count skipped updates (placeholder URLs)
+        $skipped = ($result.Details.Keys | Where-Object { $_ -like 'Skipped_*' }).Count
+        
         $result.Success = ($failed -eq 0)
-        $result.Message = "Installed $installed Intel driver updates"
-        if ($failed -gt 0) {
-            $result.Message += ", $failed failed"
+        if ($installed -eq 0 -and $skipped -gt 0 -and $failed -eq 0) {
+            $result.Message = "No Intel drivers installed - $skipped skipped (catalog has placeholder URLs, install Intel DSA for real updates)"
+            $result.Success = $true  # Not a failure, just no actionable updates
+        }
+        elseif ($installed -gt 0) {
+            $result.Message = "Installed $installed Intel driver updates"
+            if ($failed -gt 0) {
+                $result.Message += ", $failed failed"
+            }
+            if ($skipped -gt 0) {
+                $result.Message += ", $skipped skipped"
+            }
+        }
+        else {
+            $result.Message = "Intel driver installation: $installed installed, $failed failed"
         }
         $result.UpdatesApplied = $installed
         $result.UpdatesFailed = $failed
@@ -490,6 +512,166 @@ function Install-IntelDriverUpdates {
     }
     
     return $result
+}
+
+#endregion
+
+#region Intel DSA (Driver & Support Assistant) Integration
+
+function Test-IntelDSAInstalled {
+    <#
+    .SYNOPSIS
+        Checks if Intel Driver & Support Assistant is installed
+    .OUTPUTS
+        PSCustomObject with installation status and path
+    #>
+    [CmdletBinding()]
+    param()
+    
+    $dsaPaths = @(
+        "$env:ProgramFiles\Intel\Driver and Support Assistant\DSATray.exe",
+        "${env:ProgramFiles(x86)}\Intel\Driver and Support Assistant\DSATray.exe",
+        "$env:LocalAppData\Programs\Intel\Driver and Support Assistant\DSATray.exe"
+    )
+    
+    foreach ($path in $dsaPaths) {
+        if (Test-Path $path) {
+            $version = (Get-Item $path).VersionInfo.ProductVersion
+            return [PSCustomObject]@{
+                Installed = $true
+                Path = $path
+                Version = $version
+            }
+        }
+    }
+    
+    return [PSCustomObject]@{
+        Installed = $false
+        Path = $null
+        Version = $null
+    }
+}
+
+function Install-IntelDSA {
+    <#
+    .SYNOPSIS
+        Downloads and installs Intel Driver & Support Assistant
+    .DESCRIPTION
+        Intel DSA is Intel's official tool for driver updates. This function
+        downloads and installs it silently.
+    .PARAMETER Force
+        Force reinstall even if already installed
+    .EXAMPLE
+        Install-IntelDSA
+    .OUTPUTS
+        PSCustomObject with installation result
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [switch]$Force
+    )
+    
+    $result = [PSCustomObject]@{
+        Success = $false
+        Message = ""
+        DSAPath = $null
+    }
+    
+    # Check if already installed
+    $existing = Test-IntelDSAInstalled
+    if ($existing.Installed -and -not $Force) {
+        $result.Success = $true
+        $result.Message = "Intel DSA already installed (version $($existing.Version))"
+        $result.DSAPath = $existing.Path
+        Write-DriverLog -Message $result.Message -Severity Info
+        return $result
+    }
+    
+    Assert-Elevation -Operation "Installing Intel DSA"
+    
+    # Intel DSA download URL (this is the stable download location)
+    $dsaUrl = "https://dsadata.intel.com/installer"
+    $installerPath = Join-Path $env:TEMP "Intel-Driver-and-Support-Assistant-Installer.exe"
+    
+    try {
+        Write-DriverLog -Message "Downloading Intel Driver & Support Assistant" -Severity Info
+        
+        if ($PSCmdlet.ShouldProcess("Intel DSA", "Download and Install")) {
+            # Force TLS 1.2
+            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+            
+            # Download installer
+            $downloadResult = Start-DownloadWithVerification -SourceUrl $dsaUrl -DestinationPath $installerPath
+            
+            if (-not (Test-Path $installerPath)) {
+                throw "Download failed - installer not found"
+            }
+            
+            Write-DriverLog -Message "Installing Intel DSA silently" -Severity Info
+            
+            # Silent install
+            $installProcess = Start-Process -FilePath $installerPath -ArgumentList "/silent" -Wait -PassThru -NoNewWindow
+            
+            if ($installProcess.ExitCode -eq 0) {
+                $result.Success = $true
+                $result.Message = "Intel DSA installed successfully"
+                $newInstall = Test-IntelDSAInstalled
+                $result.DSAPath = $newInstall.Path
+            }
+            else {
+                $result.Message = "Intel DSA installation failed with exit code $($installProcess.ExitCode)"
+            }
+        }
+    }
+    catch {
+        $result.Message = "Failed to install Intel DSA: $($_.Exception.Message)"
+        Write-DriverLog -Message $result.Message -Severity Error
+    }
+    finally {
+        # Cleanup
+        Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
+    }
+    
+    Write-DriverLog -Message $result.Message -Severity $(if ($result.Success) { 'Info' } else { 'Error' })
+    return $result
+}
+
+function Test-IntelDownloadUrl {
+    <#
+    .SYNOPSIS
+        Tests if an Intel download URL is a real driver download vs placeholder
+    .PARAMETER Url
+        The URL to test
+    .OUTPUTS
+        Boolean - true if URL appears to be a real driver download
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Url
+    )
+    
+    # Placeholder URLs that don't lead to actual downloads
+    $placeholderPatterns = @(
+        'intel.com/content/www/.*/download-center',
+        'intel.com/content/www/.*/download-center/home.html',
+        'downloadcenter\.intel\.com/?$'
+    )
+    
+    foreach ($pattern in $placeholderPatterns) {
+        if ($Url -match $pattern) {
+            return $false
+        }
+    }
+    
+    # Valid download URLs typically end in .exe, .zip, or have downloadmirror in the path
+    if ($Url -match '\.exe$' -or $Url -match '\.zip$' -or $Url -match 'downloadmirror\.intel\.com') {
+        return $true
+    }
+    
+    # If it doesn't match known patterns, assume it might work
+    return $true
 }
 
 #endregion
