@@ -492,6 +492,10 @@ function Install-DellCommandUpdate {
         Write-DriverLog -Message "Failed to install Dell Command Update via direct download: $($_.Exception.Message). Trying WinGet (Dell.CommandUpdate)..." -Severity Warning
         
         try {
+            if (-not (Ensure-WinGetInternal -AutoInstall)) {
+                throw "WinGet is not available and could not be installed automatically"
+            }
+            
             $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
             if (-not $winget) {
                 throw "winget.exe not found"

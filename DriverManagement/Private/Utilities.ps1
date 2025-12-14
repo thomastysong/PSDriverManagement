@@ -222,6 +222,77 @@ function Start-DownloadWithVerification {
     }
 }
 
+function Test-WinGetAvailableInternal {
+    [CmdletBinding()]
+    param()
+    
+    try {
+        return [bool](Get-Command winget.exe -ErrorAction SilentlyContinue)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Install-WinGetInternal {
+    <#
+    .SYNOPSIS
+        Best-effort WinGet installation (App Installer MSIXBundle).
+    .DESCRIPTION
+        Downloads the App Installer MSIXBundle from the official aka.ms redirect and installs it via Add-AppxPackage.
+        This may fail on some images (Server/LTSC/Store-disabled) and will log and return $false in that case.
+    .OUTPUTS
+        [bool] success
+    #>
+    [CmdletBinding()]
+    param()
+    
+    # If already present, nothing to do
+    if (Test-WinGetAvailableInternal) { return $true }
+    
+    $bundleUrl = 'https://aka.ms/getwinget'
+    $bundlePath = Join-Path $env:TEMP "Microsoft.DesktopAppInstaller_$(Get-Date -Format 'yyyyMMddHHmmss').msixbundle"
+    
+    try {
+        Write-DriverLog -Message "WinGet not found. Downloading App Installer from aka.ms/getwinget" -Severity Warning
+        
+        Start-DownloadWithVerification -SourceUrl $bundleUrl -DestinationPath $bundlePath | Out-Null
+        if (-not (Test-Path $bundlePath)) {
+            throw "Download failed - MSIXBundle not found"
+        }
+        
+        Write-DriverLog -Message "Installing App Installer (WinGet) via Add-AppxPackage" -Severity Info
+        Add-AppxPackage -Path $bundlePath -ErrorAction Stop | Out-Null
+        
+        Start-Sleep -Seconds 2
+        if (-not (Test-WinGetAvailableInternal)) {
+            throw "WinGet still not available after Add-AppxPackage"
+        }
+        
+        Write-DriverLog -Message "WinGet installed successfully" -Severity Info
+        return $true
+    }
+    catch {
+        Write-DriverLog -Message "Failed to auto-install WinGet: $($_.Exception.Message)" -Severity Warning
+        return $false
+    }
+    finally {
+        Remove-Item -Path $bundlePath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Ensure-WinGetInternal {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [switch]$AutoInstall
+    )
+    
+    if (Test-WinGetAvailableInternal) { return $true }
+    if (-not $AutoInstall) { return $false }
+    return (Install-WinGetInternal)
+}
+
 function Get-InstalledDrivers {
     <#
     .SYNOPSIS

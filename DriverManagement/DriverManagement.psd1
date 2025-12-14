@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.4.6'
+    ModuleVersion     = '1.4.7'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -205,6 +205,10 @@
 ## Version 1.4.6
 ### Bug Fixes
 - Dell Command Update installation now falls back to WinGet (`winget install -e --id Dell.CommandUpdate`) when Dell direct downloads are blocked (403/edge/Akamai).
+
+## Version 1.4.7
+### Improvements
+- Dell Command Update WinGet fallback now **auto-installs WinGet (best-effort)** when `winget.exe` is missing (App Installer via `https://aka.ms/getwinget` + `Add-AppxPackage`).
 
 ## Version 1.4.4
 ### New Features
