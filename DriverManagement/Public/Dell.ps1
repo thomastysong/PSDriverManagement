@@ -1336,6 +1336,10 @@ function Install-DellDriverUpdates {
         $exitInfo = Get-DCUExitInfo -ExitCode $exitCode
         
         # Interpret exit codes
+        # Note: DCU sometimes returns exit code 5 (admin privilege) when the real issue
+        # is a pending reboot. We parse the output to detect this and report accurately.
+        $dcuOutputStr = $applyResult | Out-String
+        
         switch ($exitCode) {
             0 {
                 $result.Success = $true
@@ -1351,6 +1355,20 @@ function Install-DellDriverUpdates {
                 $result.Success = $true
                 $result.Message = "No applicable updates"
                 $result.RebootRequired = $false
+            }
+            5 {
+                # Exit code 5 can mean admin privilege OR pending reboot (DCU bug)
+                # Check actual output to determine the real issue
+                if ($dcuOutputStr -match 'reboot|restart') {
+                    $result.Success = $false
+                    $result.Message = "System reboot pending - please restart the computer and try again"
+                    $result.RebootRequired = $true
+                }
+                else {
+                    $result.Success = $false
+                    $result.Message = "$($exitInfo.Description) - $($exitInfo.Resolution)"
+                    $result.RebootRequired = $false
+                }
             }
             default {
                 $result.Success = $false

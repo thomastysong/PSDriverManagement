@@ -241,14 +241,23 @@ function Invoke-DriverManagement {
             }
             
             # If no updates were applied at all, set appropriate message
+            # But only set Success = $true if there wasn't already a failure
             if ($result.UpdatesApplied -eq 0) {
                 if (-not $oemInfo.IsSupported -and $intelDevices.Count -eq 0 -and -not $IncludeWindowsUpdates) {
-                    $result.Message = "No OEM support, no Intel devices, and Windows Updates not requested"
+                    if (-not $result.Message) {
+                        $result.Message = "No OEM support, no Intel devices, and Windows Updates not requested"
+                    }
                 }
                 elseif (-not $oemInfo.IsSupported -and $intelDevices.Count -eq 0) {
-                    $result.Message = "No OEM support and no Intel devices detected"
+                    if (-not $result.Message) {
+                        $result.Message = "No OEM support and no Intel devices detected"
+                    }
                 }
-                $result.Success = $true  # Not an error, just nothing to update
+                # Only set Success = $true if it wasn't already set to $false by a failure
+                # This prevents overwriting failure status from OEM/Intel/Windows update errors
+                if ($result.Success -eq $null -or ($result.Success -eq $true -and -not $result.Message)) {
+                    $result.Success = $true  # Not an error, just nothing to update
+                }
             }
         }
         
