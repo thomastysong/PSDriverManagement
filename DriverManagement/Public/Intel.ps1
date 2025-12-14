@@ -5,7 +5,9 @@
     Intel driver management functions
 .DESCRIPTION
     Provides detection, installation, and management of Intel drivers.
-    Uses catalog-based approach since Intel DSA has no CLI/API support.
+    Uses Intel DSA's public data feed (dsadata.intel.com) to dynamically identify
+    applicable Intel driver packages (Graphics/Wireless) and download them from
+    downloadmirror.intel.com.
 .NOTES
     Intel vendor ID: VEN_8086
     Device IDs follow pattern: PCI\VEN_8086&DEV_XXXX
@@ -114,100 +116,204 @@ function Get-IntelDownloadFileName {
 
 #endregion
 
-#region Intel Driver Catalog
+#region Intel DSA Data Feed (dynamic catalog)
 
-function Get-IntelDriverCatalog {
+function Get-IntelDsaDataFeedUrl {
+    [CmdletBinding()]
+    param()
+    
+    # Small ZIP containing software-configurations.json
+    return 'https://dsadata.intel.com/data/en'
+}
+
+function Get-IntelDsaCachePath {
+    [CmdletBinding()]
+    param()
+    
+    try {
+        $base = Join-Path $env:LOCALAPPDATA 'PSDriverManagement\Cache\Intel'
+        if (-not (Test-Path $base)) {
+            New-Item -Path $base -ItemType Directory -Force | Out-Null
+        }
+        return $base
+    }
+    catch {
+        $base = Join-Path $env:TEMP 'PSDriverManagement_IntelCache'
+        if (-not (Test-Path $base)) {
+            New-Item -Path $base -ItemType Directory -Force | Out-Null
+        }
+        return $base
+    }
+}
+
+function Get-IntelDsaFeedMetadata {
     <#
     .SYNOPSIS
-        Loads the Intel driver catalog from JSON
-    .DESCRIPTION
-        Loads the catalog file from Config/intel_drivers.json
+        Retrieves metadata headers for the Intel DSA data feed ZIP.
     .OUTPUTS
-        Hashtable with drivers array
+        PSCustomObject with Version, HashSha1, LastModified, ContentLength
     #>
     [CmdletBinding()]
     param()
     
-    $catalogPath = Join-Path $script:ModuleRoot "Config\intel_drivers.json"
-    
-    if (-not (Test-Path $catalogPath)) {
-        Write-DriverLog -Message "Intel driver catalog not found: $catalogPath" -Severity Warning
-        return @{ drivers = @() }
-    }
-    
+    $url = Get-IntelDsaDataFeedUrl
     try {
-        $catalog = Get-Content -Path $catalogPath -Raw | ConvertFrom-Json
-        return @{
-            drivers = $catalog.drivers
-            lastUpdated = if ($catalog.lastUpdated) { $catalog.lastUpdated } else { $null }
+        $r = Invoke-WebRequest -Uri $url -UseBasicParsing -Method Head -MaximumRedirection 5 -ErrorAction Stop
+        return [PSCustomObject]@{
+            Url           = $url
+            Version       = $r.Headers['X-DSA-Version']
+            HashSha1      = $r.Headers['X-DSA-Hash']
+            LastModified  = $r.Headers['Last-Modified']
+            ContentLength = $r.Headers['Content-Length']
         }
     }
     catch {
-        Write-DriverLog -Message "Failed to load Intel driver catalog: $($_.Exception.Message)" -Severity Error
-        return @{ drivers = @() }
+        Write-DriverLog -Message "Failed to query Intel DSA feed metadata: $($_.Exception.Message)" -Severity Warning
+        return $null
     }
 }
 
-function Match-IntelDeviceToCatalog {
+function Get-IntelDsaSoftwareConfigurations {
     <#
     .SYNOPSIS
-        Matches an Intel device to catalog entries
+        Loads Intel DSA software configurations (dynamic catalog).
     .DESCRIPTION
-        Matches device by DeviceID, HardwareID, or device class
-    .PARAMETER Device
-        Intel device object from Get-IntelDevices
-    .PARAMETER Catalog
-        Catalog object from Get-IntelDriverCatalog
+        Downloads https://dsadata.intel.com/data/en (idsa-en.zip) and extracts
+        software-configurations.json. Uses a small local cache keyed by X-DSA-Hash.
     .OUTPUTS
-        Matching catalog entries
+        Array of PSCustomObject entries (Intel DSA software configurations)
     #>
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)]
-        [PSCustomObject]$Device,
-        
-        [Parameter(Mandatory)]
-        [hashtable]$Catalog
+        [Parameter()]
+        [switch]$ForceRefresh
     )
     
-    $catalogMatches = @()
+    $meta = Get-IntelDsaFeedMetadata
+    if (-not $meta -or -not $meta.HashSha1) {
+        return @()
+    }
     
-    foreach ($driver in $Catalog.drivers) {
-        $isMatch = $false
-        
-        # Match by device IDs
-        if ($driver.deviceIds) {
-            foreach ($deviceId in $driver.deviceIds) {
-                # Support wildcard matching (e.g., PCI\VEN_8086&DEV_*)
-                # Escape special regex characters first, then replace wildcards
-                $escaped = [regex]::Escape($deviceId)
-                $pattern = $escaped -replace '\\\*', '.*' -replace '\\\?', '.'
-                try {
-                    if ($Device.DeviceID -match $pattern -or $Device.HardwareID -match $pattern) {
-                        $isMatch = $true
-                        break
-                    }
-                }
-                catch {
-                    # Invalid regex pattern - skip this device ID
-                    Write-DriverLog -Message "Invalid device ID pattern: $deviceId - $($_.Exception.Message)" -Severity Warning
-                }
-            }
+    $cacheRoot = Get-IntelDsaCachePath
+    $cacheKey = ([string]$meta.HashSha1).ToUpperInvariant()
+    $zipPath = Join-Path $cacheRoot "idsa-en-$cacheKey.zip"
+    $extractPath = Join-Path $cacheRoot "idsa-en-$cacheKey"
+    $jsonPath = Join-Path $extractPath 'software-configurations.json'
+    
+    if (-not $ForceRefresh -and (Test-Path $jsonPath)) {
+        try {
+            return (Get-Content -Path $jsonPath -Raw -ErrorAction Stop | ConvertFrom-Json)
         }
-        
-        # Match by device class
-        if (-not $isMatch -and $driver.deviceClass -and $Device.DeviceClass) {
-            if ($Device.DeviceClass -like "*$($driver.deviceClass)*") {
-                $isMatch = $true
-            }
-        }
-        
-        if ($isMatch) {
-            $catalogMatches += $driver
+        catch {
+            # fall through to re-download
         }
     }
     
-    return $catalogMatches
+    try {
+        Write-DriverLog -Message "Downloading Intel DSA feed (version $($meta.Version))" -Severity Info -Context @{ Url = $meta.Url; HashSha1 = $cacheKey }
+        
+        # Download ZIP (verify SHA1 using header)
+        Start-DownloadWithVerification -SourceUrl $meta.Url -DestinationPath $zipPath -ExpectedHash $cacheKey -HashAlgorithm 'SHA1' | Out-Null
+        
+        if (Test-Path $extractPath) {
+            Remove-Item -Path $extractPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        New-Item -Path $extractPath -ItemType Directory -Force | Out-Null
+        Expand-Archive -Path $zipPath -DestinationPath $extractPath -Force
+        
+        if (-not (Test-Path $jsonPath)) {
+            throw "software-configurations.json not found after extraction"
+        }
+        
+        return (Get-Content -Path $jsonPath -Raw | ConvertFrom-Json)
+    }
+    catch {
+        Write-DriverLog -Message "Failed to load Intel DSA software configurations: $($_.Exception.Message)" -Severity Error
+        return @()
+    }
+}
+
+function Get-IntelHardwareTokens {
+    <#
+    .SYNOPSIS
+        Builds a token list (VEN_8086&DEV_xxxx, VID_8087&PID_xxxx, with optional SUBSYS) for matching DSA detection values.
+    #>
+    [CmdletBinding()]
+    param()
+    
+    $tokens = New-Object System.Collections.Generic.HashSet[string] ([System.StringComparer]::OrdinalIgnoreCase)
+    
+    $drivers = Get-CimInstance -ClassName Win32_PnPSignedDriver -ErrorAction SilentlyContinue
+    foreach ($d in $drivers) {
+        $candidates = @()
+        if ($d.DeviceID) { $candidates += [string]$d.DeviceID }
+        if ($d.HardwareID) { $candidates += @($d.HardwareID | ForEach-Object { [string]$_ }) }
+        
+        foreach ($s in $candidates) {
+            if ([string]::IsNullOrWhiteSpace($s)) { continue }
+            
+            # PCI VEN/DEV (+ optional SUBSYS)
+            $m = [regex]::Matches($s, 'VEN_[0-9A-F]{4}&DEV_[0-9A-F]{4}(?:&SUBSYS_[0-9A-F]{8})?', 'IgnoreCase')
+            foreach ($x in $m) { [void]$tokens.Add($x.Value.ToUpperInvariant()) }
+            
+            # USB VID/PID (+ optional REV)
+            $m2 = [regex]::Matches($s, 'VID_[0-9A-F]{4}&PID_[0-9A-F]{4}(?:&REV_[0-9A-F]{4})?', 'IgnoreCase')
+            foreach ($x in $m2) { [void]$tokens.Add($x.Value.ToUpperInvariant()) }
+        }
+    }
+    
+    return @($tokens)
+}
+
+function Find-IntelDsaApplicablePackages {
+    <#
+    .SYNOPSIS
+        Finds Intel DSA packages applicable to this machine for Graphics/Wireless.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [ValidateSet('Graphics','Wireless','All')]
+        [string]$Category = 'All'
+    )
+    
+    $tokens = Get-IntelHardwareTokens
+    if (-not $tokens -or $tokens.Count -eq 0) { return @() }
+    
+    $configs = Get-IntelDsaSoftwareConfigurations
+    if (-not $configs -or $configs.Count -eq 0) { return @() }
+    
+    $wanted = switch ($Category) {
+        'All' { @('Graphics','Wireless') }
+        default { @($Category) }
+    }
+    
+    $matches = @()
+    foreach ($cfg in $configs) {
+        if (-not $cfg.Components) { continue }
+        
+        $cfgComponents = @($cfg.Components | Where-Object { $_.Category -and ($wanted -contains $_.Category) })
+        if ($cfgComponents.Count -eq 0) { continue }
+        
+        $isApplicable = $false
+        foreach ($comp in $cfgComponents) {
+            foreach ($dv in @($comp.DetectionValues)) {
+                if (-not $dv) { continue }
+                $dvNorm = ([string]$dv).ToUpperInvariant()
+                if ($tokens | Where-Object { $_ -like "*$dvNorm*" } | Select-Object -First 1) {
+                    $isApplicable = $true
+                    break
+                }
+            }
+            if ($isApplicable) { break }
+        }
+        
+        if ($isApplicable) {
+            $matches += $cfg
+        }
+    }
+    
+    return $matches
 }
 
 #endregion
@@ -219,8 +325,9 @@ function Get-IntelDriverUpdates {
     .SYNOPSIS
         Scans for available Intel driver updates
     .DESCRIPTION
-        Compares installed Intel drivers with catalog entries to find updates.
-        Uses catalog-based approach since Intel DSA has no CLI support.
+        Uses the Intel DSA public data feed (dsadata.intel.com) to find driver
+        packages applicable to detected hardware (Graphics/Wireless) and returns
+        the latest available downloadmirror URLs.
     .PARAMETER DeviceClass
         Filter by device class
     .EXAMPLE
@@ -236,70 +343,91 @@ function Get-IntelDriverUpdates {
         [string]$DeviceClass
     )
     
-    Write-DriverLog -Message "Scanning for Intel driver updates" -Severity Info
+    Write-DriverLog -Message "Scanning for Intel driver updates (DSA feed)" -Severity Info
     
-    # Get installed Intel devices
+    $wantedCategory = if ($DeviceClass -and $DeviceClass -match 'Display') { 'Graphics' }
+                      elseif ($DeviceClass -and $DeviceClass -match 'Net|Wireless') { 'Wireless' }
+                      else { 'All' }
+    
+    $configs = Find-IntelDsaApplicablePackages -Category $wantedCategory
+    if ($configs.Count -eq 0) {
+        Write-DriverLog -Message "No applicable Intel DSA packages found for this system" -Severity Info
+        return @()
+    }
+    
     $devices = Get-IntelDevices -DeviceClass $DeviceClass
-    
-    if ($devices.Count -eq 0) {
-        Write-DriverLog -Message "No Intel devices detected" -Severity Info
-        return @()
-    }
-    
-    # Load catalog
-    $catalog = Get-IntelDriverCatalog
-    
-    if ($catalog.drivers.Count -eq 0) {
-        Write-DriverLog -Message "Intel driver catalog is empty" -Severity Warning
-        return @()
-    }
+    $tokens = Get-IntelHardwareTokens
     
     $updates = @()
-    
-    foreach ($device in $devices) {
-        # Find matching catalog entries
-        $catalogEntries = Match-IntelDeviceToCatalog -Device $device -Catalog $catalog
+    foreach ($cfg in $configs) {
+        # Choose the best matching component category
+        $comp = $null
+        if ($wantedCategory -ne 'All') {
+            $comp = @($cfg.Components | Where-Object { $_.Category -eq $wantedCategory }) | Select-Object -First 1
+        }
+        if (-not $comp) {
+            $comp = @($cfg.Components | Where-Object { $_.Category -in @('Graphics','Wireless') }) | Select-Object -First 1
+        }
+        if (-not $comp) { continue }
         
-        foreach ($entry in $catalogEntries) {
-            # Compare versions
-            $installedVersion = $device.DriverVersion
-            $availableVersion = $entry.driverVersion
-            
-            if (-not $installedVersion -or -not $availableVersion) {
-                continue
-            }
-            
-            # Try version comparison
-            $needsUpdate = $false
+        # Find a matching token (VEN/DEV or VID/PID) from the component detection list
+        $matchToken = $null
+        foreach ($dv in @($comp.DetectionValues)) {
+            if (-not $dv) { continue }
+            $dvNorm = ([string]$dv).ToUpperInvariant()
+            $hit = $tokens | Where-Object { $_ -like "*$dvNorm*" } | Select-Object -First 1
+            if ($hit) { $matchToken = $hit; break }
+        }
+        
+        $matchedDevice = $null
+        if ($matchToken) {
+            $matchedDevice = $devices | Where-Object {
+                ($_.DeviceID -and ($_.DeviceID.ToUpperInvariant() -like "*$matchToken*")) -or
+                ($_.HardwareID -and (@($_.HardwareID) | Where-Object { $_ -and ($_.ToString().ToUpperInvariant() -like "*$matchToken*") } | Select-Object -First 1))
+            } | Select-Object -First 1
+        }
+        
+        # Determine download URL from Files
+        $file = @($cfg.Files | Where-Object { $_.Url -match 'downloadmirror\\.intel\\.com/.+\\.(exe|zip)$' }) | Select-Object -First 1
+        if (-not $file -or -not $file.Url) { continue }
+        
+        $installedVersion = if ($matchedDevice) { $matchedDevice.DriverVersion } else { $null }
+        $availableVersion = $comp.Version
+        
+        # Compare versions (best effort)
+        $needsUpdate = $true
+        if ($installedVersion) {
             try {
-                $installed = [version]$installedVersion
-                $available = [version]$availableVersion
-                $needsUpdate = $available -gt $installed
+                $needsUpdate = (([Version]$availableVersion) -gt ([Version]$installedVersion))
             }
             catch {
-                # Fallback to string comparison
                 $needsUpdate = $availableVersion -ne $installedVersion
             }
-            
-            if ($needsUpdate) {
-                $updates += [PSCustomObject]@{
-                    DeviceID         = $device.DeviceID
-                    DeviceName       = $device.DeviceName
-                    DeviceClass      = $device.DeviceClass
-                    InstalledVersion = $installedVersion
-                    AvailableVersion = $availableVersion
-                    DownloadUrl      = $entry.downloadUrl
-                    ReleaseDate      = $entry.releaseDate
-                    Severity         = if ($entry.severity) { $entry.severity } else { 'Recommended' }
-                    Description      = if ($entry.description) { $entry.description } else { "Intel $($device.DeviceClass) Driver Update" }
-                    CatalogEntry     = $entry
-                }
+        }
+        
+        if ($needsUpdate) {
+            $updates += [PSCustomObject]@{
+                PackageId        = $cfg.Id
+                PackageName      = $cfg.Name
+                PackageUrl       = $cfg.Url
+                Category         = $comp.Category
+                DeviceName       = if ($matchedDevice) { $matchedDevice.DeviceName } else { $cfg.Name }
+                DeviceClass      = if ($matchedDevice) { $matchedDevice.DeviceClass } else { $DeviceClass }
+                InstalledVersion = $installedVersion
+                AvailableVersion = $availableVersion
+                DownloadUrl      = $file.Url
+                DownloadHashSha1 = $file.Hash
+                ReleaseDate      = $cfg.DisplayReleaseDate
+                InstallOptions   = $cfg.InstallOptions
+                Details          = $cfg.Details
             }
         }
     }
     
-    Write-DriverLog -Message "Found $($updates.Count) Intel driver updates" -Severity Info `
-        -Context @{ Updates = ($updates | Select-Object DeviceName, InstalledVersion, AvailableVersion) }
+    Write-DriverLog -Message "Found $($updates.Count) Intel driver updates (DSA feed)" -Severity Info -Context @{
+        Count = $updates.Count
+        Categories = ($updates.Category | Sort-Object -Unique)
+    }
     
     return $updates
 }
@@ -380,28 +508,26 @@ function Install-IntelDriverUpdates {
         $rebootRequired = $false
         
         foreach ($update in $updates) {
-            Write-DriverLog -Message "Processing: $($update.DeviceName) ($($update.InstalledVersion) -> $($update.AvailableVersion))" -Severity Info
-            
-            # Check if the download URL is a placeholder (Intel homepage, not a real driver)
-            if (-not (Test-IntelDownloadUrl -Url $update.DownloadUrl)) {
-                Write-DriverLog -Message "Skipping $($update.DeviceName) - catalog URL is placeholder (use Install-IntelDSA for Intel's official tool)" -Severity Warning
-                $result.Details["Skipped_$($update.DeviceName)"] = "Placeholder URL - install Intel DSA for real updates"
-                continue
-            }
+            Write-DriverLog -Message "Installing: $($update.PackageName) [$($update.Category)] ($($update.InstalledVersion) -> $($update.AvailableVersion))" -Severity Info
             
             try {
                 # Download driver
                 $tempPath = Join-Path $env:TEMP "IntelDriver_$(Get-Random)"
                 New-Item -Path $tempPath -ItemType Directory -Force | Out-Null
                 
-                $fileName = Get-IntelDownloadFileName -Url $update.DownloadUrl -DefaultBaseName ($update.DeviceName -replace '\s+', '_')
+                $fileName = Get-IntelDownloadFileName -Url $update.DownloadUrl -DefaultBaseName ($update.PackageName -replace '\s+', '_')
                 $driverFile = Join-Path $tempPath $fileName
                 
                 Write-DriverLog -Message "Downloading from: $($update.DownloadUrl)" -Severity Info
                 
                 # Use the module's resilient downloader (BITS + retry + web fallback) and ensure TLS 1.2
                 Invoke-WithRetry -ScriptBlock {
-                    Start-DownloadWithVerification -SourceUrl $update.DownloadUrl -DestinationPath $driverFile | Out-Null
+                    if ($update.DownloadHashSha1) {
+                        Start-DownloadWithVerification -SourceUrl $update.DownloadUrl -DestinationPath $driverFile -ExpectedHash $update.DownloadHashSha1 -HashAlgorithm 'SHA1' | Out-Null
+                    }
+                    else {
+                        Start-DownloadWithVerification -SourceUrl $update.DownloadUrl -DestinationPath $driverFile | Out-Null
+                    }
                     if (-not (Test-Path $driverFile)) {
                         throw "Download failed - file not found after download"
                     }
@@ -456,6 +582,9 @@ function Install-IntelDriverUpdates {
                 elseif ($driverFile -match '\.exe$') {
                     # Direct installer
                     $installArgs = @('/S', '/SILENT', '/VERYSILENT', '/quiet', '/qn')
+                    if ($update.InstallOptions) {
+                        $installArgs = @($installArgs + @([string]$update.InstallOptions))
+                    }
                     $installResult = Start-Process -FilePath $driverFile -ArgumentList $installArgs -Wait -PassThru -NoNewWindow
                     
                     if ($installResult.ExitCode -eq 0 -or $installResult.ExitCode -eq 3010) {
@@ -478,31 +607,13 @@ function Install-IntelDriverUpdates {
             }
             catch {
                 $failed++
-                Write-DriverLog -Message "Failed to install $($update.DeviceName): $($_.Exception.Message)" -Severity Error `
-                    -Context @{ DeviceName = $update.DeviceName; DownloadUrl = $update.DownloadUrl; InstalledVersion = $update.InstalledVersion; AvailableVersion = $update.AvailableVersion }
+                Write-DriverLog -Message "Failed to install $($update.PackageName): $($_.Exception.Message)" -Severity Error `
+                    -Context @{ PackageName = $update.PackageName; Category = $update.Category; DownloadUrl = $update.DownloadUrl; InstalledVersion = $update.InstalledVersion; AvailableVersion = $update.AvailableVersion }
             }
         }
-        
-        # Count skipped updates (placeholder URLs)
-        $skipped = ($result.Details.Keys | Where-Object { $_ -like 'Skipped_*' }).Count
         
         $result.Success = ($failed -eq 0)
-        if ($installed -eq 0 -and $skipped -gt 0 -and $failed -eq 0) {
-            $result.Message = "No Intel drivers installed - $skipped skipped (catalog has placeholder URLs, install Intel DSA for real updates)"
-            $result.Success = $true  # Not a failure, just no actionable updates
-        }
-        elseif ($installed -gt 0) {
-            $result.Message = "Installed $installed Intel driver updates"
-            if ($failed -gt 0) {
-                $result.Message += ", $failed failed"
-            }
-            if ($skipped -gt 0) {
-                $result.Message += ", $skipped skipped"
-            }
-        }
-        else {
-            $result.Message = "Intel driver installation: $installed installed, $failed failed"
-        }
+        $result.Message = "Intel driver installation: $installed installed, $failed failed"
         $result.UpdatesApplied = $installed
         $result.UpdatesFailed = $failed
         $result.RebootRequired = $rebootRequired -and (-not $NoReboot)
@@ -516,166 +627,6 @@ function Install-IntelDriverUpdates {
 
 #endregion
 
-#region Intel DSA (Driver & Support Assistant) Integration
-
-function Test-IntelDSAInstalled {
-    <#
-    .SYNOPSIS
-        Checks if Intel Driver & Support Assistant is installed
-    .OUTPUTS
-        PSCustomObject with installation status and path
-    #>
-    [CmdletBinding()]
-    param()
-    
-    $dsaPaths = @(
-        "$env:ProgramFiles\Intel\Driver and Support Assistant\DSATray.exe",
-        "${env:ProgramFiles(x86)}\Intel\Driver and Support Assistant\DSATray.exe",
-        "$env:LocalAppData\Programs\Intel\Driver and Support Assistant\DSATray.exe"
-    )
-    
-    foreach ($path in $dsaPaths) {
-        if (Test-Path $path) {
-            $version = (Get-Item $path).VersionInfo.ProductVersion
-            return [PSCustomObject]@{
-                Installed = $true
-                Path = $path
-                Version = $version
-            }
-        }
-    }
-    
-    return [PSCustomObject]@{
-        Installed = $false
-        Path = $null
-        Version = $null
-    }
-}
-
-function Install-IntelDSA {
-    <#
-    .SYNOPSIS
-        Downloads and installs Intel Driver & Support Assistant
-    .DESCRIPTION
-        Intel DSA is Intel's official tool for driver updates. This function
-        downloads and installs it silently.
-    .PARAMETER Force
-        Force reinstall even if already installed
-    .EXAMPLE
-        Install-IntelDSA
-    .OUTPUTS
-        PSCustomObject with installation result
-    #>
-    [CmdletBinding(SupportsShouldProcess)]
-    param(
-        [Parameter()]
-        [switch]$Force
-    )
-    
-    $result = [PSCustomObject]@{
-        Success = $false
-        Message = ""
-        DSAPath = $null
-    }
-    
-    # Check if already installed
-    $existing = Test-IntelDSAInstalled
-    if ($existing.Installed -and -not $Force) {
-        $result.Success = $true
-        $result.Message = "Intel DSA already installed (version $($existing.Version))"
-        $result.DSAPath = $existing.Path
-        Write-DriverLog -Message $result.Message -Severity Info
-        return $result
-    }
-    
-    Assert-Elevation -Operation "Installing Intel DSA"
-    
-    # Intel DSA download URL (this is the stable download location)
-    $dsaUrl = "https://dsadata.intel.com/installer"
-    $installerPath = Join-Path $env:TEMP "Intel-Driver-and-Support-Assistant-Installer.exe"
-    
-    try {
-        Write-DriverLog -Message "Downloading Intel Driver & Support Assistant" -Severity Info
-        
-        if ($PSCmdlet.ShouldProcess("Intel DSA", "Download and Install")) {
-            # Force TLS 1.2
-            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-            
-            # Download installer
-            $downloadResult = Start-DownloadWithVerification -SourceUrl $dsaUrl -DestinationPath $installerPath
-            
-            if (-not (Test-Path $installerPath)) {
-                throw "Download failed - installer not found"
-            }
-            
-            Write-DriverLog -Message "Installing Intel DSA silently" -Severity Info
-            
-            # Silent install
-            $installProcess = Start-Process -FilePath $installerPath -ArgumentList "/silent" -Wait -PassThru -NoNewWindow
-            
-            if ($installProcess.ExitCode -eq 0) {
-                $result.Success = $true
-                $result.Message = "Intel DSA installed successfully"
-                $newInstall = Test-IntelDSAInstalled
-                $result.DSAPath = $newInstall.Path
-            }
-            else {
-                $result.Message = "Intel DSA installation failed with exit code $($installProcess.ExitCode)"
-            }
-        }
-    }
-    catch {
-        $result.Message = "Failed to install Intel DSA: $($_.Exception.Message)"
-        Write-DriverLog -Message $result.Message -Severity Error
-    }
-    finally {
-        # Cleanup
-        Remove-Item -Path $installerPath -Force -ErrorAction SilentlyContinue
-    }
-    
-    Write-DriverLog -Message $result.Message -Severity $(if ($result.Success) { 'Info' } else { 'Error' })
-    return $result
-}
-
-function Test-IntelDownloadUrl {
-    <#
-    .SYNOPSIS
-        Tests if an Intel download URL is a real driver download vs placeholder
-    .PARAMETER Url
-        The URL to test
-    .OUTPUTS
-        Boolean - true if URL appears to be a real driver download
-    #>
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory)]
-        [string]$Url
-    )
-    
-    # Placeholder URLs that don't lead to actual downloads
-    $placeholderPatterns = @(
-        'intel.com/content/www/.*/download-center',
-        'intel.com/content/www/.*/download-center/home.html',
-        'downloadcenter\.intel\.com/?$'
-    )
-    
-    foreach ($pattern in $placeholderPatterns) {
-        if ($Url -match $pattern) {
-            return $false
-        }
-    }
-    
-    # Valid download URLs typically end in .exe, .zip, or have downloadmirror in the path
-    if ($Url -match '\.exe$' -or $Url -match '\.zip$' -or $Url -match 'downloadmirror\.intel\.com') {
-        return $true
-    }
-    
-    # If it doesn't match known patterns, assume it might work
-    return $true
-}
-
-#endregion
-
 #region Intel Module Initialization
 
 function Initialize-IntelModule {
@@ -683,7 +634,7 @@ function Initialize-IntelModule {
     .SYNOPSIS
         Initializes Intel driver management
     .DESCRIPTION
-        Checks for Intel devices, loads catalog, and validates configuration.
+        Checks for Intel devices and validates access to the Intel DSA data feed.
     .OUTPUTS
         PSCustomObject with initialization status
     #>
@@ -702,23 +653,18 @@ function Initialize-IntelModule {
     $devices = Get-IntelDevices
     $status.DevicesDetected = $devices.Count
     
-    # Load catalog
-    $catalogPath = Join-Path $script:ModuleRoot "Config\intel_drivers.json"
-    $status.CatalogPath = $catalogPath
+    # Load DSA feed (dynamic catalog)
+    $meta = Get-IntelDsaFeedMetadata
+    $status.CatalogPath = if ($meta) { $meta.Url } else { $null }
     
-    if (Test-Path $catalogPath) {
-        $catalog = Get-IntelDriverCatalog
-        $status.CatalogLoaded = ($catalog.drivers.Count -gt 0)
-        
-        if ($status.CatalogLoaded) {
-            $status.Message = "Intel module initialized: $($status.DevicesDetected) devices, $($catalog.drivers.Count) catalog entries"
-        }
-        else {
-            $status.Message = "Intel module initialized: $($status.DevicesDetected) devices, but catalog is empty"
-        }
+    $configs = Get-IntelDsaSoftwareConfigurations
+    $status.CatalogLoaded = ($configs.Count -gt 0)
+    
+    if ($status.CatalogLoaded) {
+        $status.Message = "Intel module initialized: $($status.DevicesDetected) devices, DSA feed version $($meta.Version), $($configs.Count) entries"
     }
     else {
-        $status.Message = "Intel module initialized: $($status.DevicesDetected) devices, but catalog not found at $catalogPath"
+        $status.Message = "Intel module initialized: $($status.DevicesDetected) devices, but failed to load DSA feed"
     }
     
     $status.Initialized = $true
