@@ -24,7 +24,7 @@ $script:DCUExitCodes = @{
     4    = @{ Description = "CLI was not launched with administrative privileges"; Resolution = "Run PowerShell/CLI as Administrator. If already elevated, check Dell services and ProgramData\\Dell permissions." }
     # Exit code 5 meaning varies by DCU version/environment; we keep it actionable and add diagnostics elsewhere.
     5    = @{ Description = "Privilege / qualification error"; Resolution = "If elevated, check Dell Client Management Service and ProgramData\\Dell folder permissions; review DCU logs." }
-    6    = @{ Description = "No update filters found"; Resolution = "Check update type/severity filters" }
+    6    = @{ Description = "No update information found (check update filter settings)"; Resolution = "Verify -updateType/-updateSeverity filters, run /scan first, and confirm DCU can write to ProgramData\\Dell." }
     7    = @{ Description = "Duplicate command line option"; Resolution = "Remove duplicate options" }
     8    = @{ Description = "Cannot create the scheduled task"; Resolution = "Check Task Scheduler permissions" }
     9    = @{ Description = "Cannot remove the scheduled task"; Resolution = "Check Task Scheduler permissions" }
@@ -1692,12 +1692,31 @@ function Install-DellDriverUpdates {
     # Map update types
     $typeParam = ($UpdateTypes | ForEach-Object { $_.ToLower() }) -join ','
     if ('All' -in $UpdateTypes) { $typeParam = 'driver,bios,firmware,application' }
+
+    # Map severity to Dell DCU-supported values.
+    # Dell docs for DCU 5.x list updateSeverity values like: security,recommended,optional.
+    $dellSeverity = @()
+    foreach ($s in @($Severity)) {
+        switch ($s) {
+            'Critical' { $dellSeverity += 'security' }
+            'Recommended' { $dellSeverity += 'recommended' }
+            'Optional' { $dellSeverity += 'optional' }
+        }
+    }
+    $dellSeverity = @($dellSeverity | Where-Object { $_ } | Select-Object -Unique)
+    if ($dellSeverity.Count -eq 0) { $dellSeverity = @('security', 'recommended') }
+    $severityParam = ($dellSeverity -join ',')
+
+    # Prepare report/log locations for scan -> apply flow
+    $reportPath = Join-Path $env:ProgramData 'Dell\\UpdateScan'
+    if (-not (Test-Path $reportPath)) { New-Item -Path $reportPath -ItemType Directory -Force | Out-Null }
+    $applicableXml = Join-Path $reportPath 'DCUApplicableUpdates.xml'
     
     # Build apply command
     $applyArgs = @(
         '/applyUpdates'
         "-updateType=$typeParam"
-        '-updateSeverity=security,critical,recommended'
+        "-updateSeverity=$severityParam"
         '-autoSuspendBitLocker=enable'
         '-silent'
         "-outputLog=$env:ProgramData\Dell\Logs\DCU_$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
@@ -1708,7 +1727,7 @@ function Install-DellDriverUpdates {
     }
     
     if ($PSCmdlet.ShouldProcess("Dell drivers", "Install updates")) {
-        Write-DriverLog -Message "Installing Dell updates: $typeParam" -Severity Info
+        Write-DriverLog -Message "Scanning for Dell updates: Type=$typeParam Severity=$severityParam" -Severity Info
 
         # Pre-flight diagnostics that help explain "privilege" failures even when elevated.
         $svcDiag = Ensure-DellClientManagementServiceInternal
@@ -1718,8 +1737,77 @@ function Install-DellDriverUpdates {
         $pdDellLogsWritable = Test-WriteAccessInternal -Path $programDataDellLogs
         $isElevated = Test-IsElevated
 
+        # Always run /scan first (more reliable than /applyUpdates directly; also generates the applicable updates report)
+        $scanLog = Join-Path $programDataDellLogs ("DCU_Scan_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+        $scanArgs = @(
+            '/scan'
+            "-updateType=$typeParam"
+            "-updateSeverity=$severityParam"
+            '-silent'
+            "-report=$reportPath"
+            "-outputLog=$scanLog"
+        )
+
+        $scanResult = & $dcuCli @scanArgs 2>&1
+        $scanExitCode = $LASTEXITCODE
+
+        # Retry once if DCU reports it's already running
+        if ($scanExitCode -eq 12) {
+            Write-DriverLog -Message "DCU scan reported another instance running. Waiting 10s and retrying once..." -Severity Warning
+            Start-Sleep -Seconds 10
+            $scanResult = & $dcuCli @scanArgs 2>&1
+            $scanExitCode = $LASTEXITCODE
+        }
+
+        $scanExitInfo = Get-DCUExitInfo -ExitCode $scanExitCode
+        Write-DriverLog -Message "DCU scan completed: $($scanExitInfo.Description) (Exit: $scanExitCode)" -Severity Info
+
+        # If scan produced a report, use it to decide whether to run apply.
+        $applicableCount = 0
+        try {
+            if (Test-Path $applicableXml) {
+                [xml]$updatesXml = Get-Content $applicableXml -ErrorAction Stop
+                $nodes = @($updatesXml.updates.update)
+                $applicableCount = $nodes.Count
+            }
+        }
+        catch {
+            Write-DriverLog -Message "Failed to parse DCU applicable updates report: $($_.Exception.Message)" -Severity Warning
+        }
+
+        # If scan indicates no updates (or no report / no update info), exit cleanly.
+        $scanOutputStr = $scanResult | Out-String
+        if ($applicableCount -eq 0 -and ($scanExitCode -in @(18, 500, 6) -or $scanOutputStr -match 'No update information found|No update filters found')) {
+            $result.Success = $true
+            $result.Message = "No applicable updates"
+            $result.RebootRequired = $false
+            $result.UpdatesApplied = 0
+            $result.ExitCode = 0
+            $result.Details = @{
+                DCUScanExitCode = $scanExitCode
+                DCUScanExitInfo = $scanExitInfo
+                ApplicableUpdatesCount = $applicableCount
+                Elevated = $isElevated
+                Service = $svcDiag
+                ProgramDataDellWritable = $pdDellWritable
+                ProgramDataDellLogsWritable = $pdDellLogsWritable
+            }
+            Write-DriverLog -Message "Dell update complete: $($result.Message)" -Severity Info -Context $result.ToHashtable()
+            return $result
+        }
+
+        Write-DriverLog -Message "Applying Dell updates: Type=$typeParam Severity=$severityParam (Applicable: $applicableCount)" -Severity Info
+
         $applyResult = & $dcuCli @applyArgs 2>&1
         $exitCode = $LASTEXITCODE
+
+        # Retry once if DCU reports it's already running
+        if ($exitCode -eq 12) {
+            Write-DriverLog -Message "DCU apply reported another instance running. Waiting 10s and retrying once..." -Severity Warning
+            Start-Sleep -Seconds 10
+            $applyResult = & $dcuCli @applyArgs 2>&1
+            $exitCode = $LASTEXITCODE
+        }
 
         # Retry once on privilege-related exit codes after ensuring service/write access.
         if ($exitCode -in @(4, 5)) {
@@ -1761,6 +1849,22 @@ function Install-DellDriverUpdates {
                 $result.RebootRequired = $false
                 $result.UpdatesApplied = 0
             }
+            6 {
+                # DCU sometimes reports "No update information found" when filters yield no results or scan data isn't present.
+                # Treat as "no updates" when the output matches this known benign case.
+                if ($dcuOutputStr -match 'No update information found|No update filters found') {
+                    $result.Success = $true
+                    $result.Message = "No applicable updates"
+                    $result.RebootRequired = $false
+                    $result.UpdatesApplied = 0
+                }
+                else {
+                    $result.Success = $false
+                    $result.Message = "$($exitInfo.Description) (DCU exit code: $exitCode) - $($exitInfo.Resolution)"
+                    $result.RebootRequired = $false
+                    $result.UpdatesFailed = 1
+                }
+            }
             5 {
                 # Exit code 5 can mean admin privilege OR pending reboot (DCU bug)
                 # Check actual output to determine the real issue
@@ -1800,6 +1904,9 @@ function Install-DellDriverUpdates {
         
         $result.ExitCode = if ($result.RebootRequired) { 3010 } elseif ($result.Success) { 0 } else { 1 }
         $result.Details = @{
+            DCUScanExitCode = $scanExitCode
+            DCUScanExitInfo = $scanExitInfo
+            ApplicableUpdatesCount = $applicableCount
             DCUExitCode = $exitCode
             DCUExitInfo = $exitInfo
             Elevated = $isElevated

@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.5.1'
+    ModuleVersion     = '1.5.2'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -200,6 +200,14 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.5.2
+### Improvements
+- **DCU scan-before-apply**: `Install-DellDriverUpdates` now runs `dcu-cli.exe /scan` first and only runs `/applyUpdates` when applicable updates are detected (more reliable DCU behavior).
+- **DCU severity mapping fix**: `-updateSeverity` now uses Dell-supported values (`security,recommended,optional`) and no longer passes invalid tokens that can cause “No update information found”.
+- **Better DCU handling**:
+  - Retries once when DCU reports “already running” (exit code 12)
+  - Treats exit code 6 with “No update information found / filter settings” output as **No applicable updates** (success), not a hard failure.
+
 ## Version 1.5.1
 ### Improvements
 - **DCU Install via WinGet Only**: `Install-DellCommandUpdate` now uses WinGet exclusively (`winget install Dell.CommandUpdate`), skipping direct Dell downloads which are frequently blocked (403 Forbidden). This is faster and more reliable.
