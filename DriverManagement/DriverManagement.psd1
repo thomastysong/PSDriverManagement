@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.4.5'
+    ModuleVersion     = '1.4.6'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -201,6 +201,10 @@
   - Determine which packages apply to detected hardware (via DSA DetectionValues)
   - Use real `downloadmirror.intel.com` URLs, including SHA1 verification when available
 - Removed the static Intel catalog file (`Config/intel_drivers.json`) and related placeholder logic
+
+## Version 1.4.6
+### Bug Fixes
+- Dell Command Update installation now falls back to WinGet (`winget install -e --id Dell.CommandUpdate`) when Dell direct downloads are blocked (403/edge/Akamai).
 
 ## Version 1.4.4
 ### New Features

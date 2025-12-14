@@ -488,8 +488,35 @@ function Install-DellCommandUpdate {
         }
     }
     catch {
-        Write-DriverLog -Message "Failed to install Dell Command Update: $($_.Exception.Message)" -Severity Error
-        throw
+        # Fallback: install via WinGet if Dell download is blocked (common 403/Akamai)
+        Write-DriverLog -Message "Failed to install Dell Command Update via direct download: $($_.Exception.Message). Trying WinGet (Dell.CommandUpdate)..." -Severity Warning
+        
+        try {
+            $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+            if (-not $winget) {
+                throw "winget.exe not found"
+            }
+            
+            # Prefer exact ID match
+            $args = @('install','-e','--id','Dell.CommandUpdate','--silent','--accept-package-agreements','--accept-source-agreements')
+            $p = Start-Process -FilePath $winget.Source -ArgumentList $args -Wait -PassThru -NoNewWindow
+            
+            if ($p.ExitCode -eq 0) {
+                Write-DriverLog -Message "Dell Command Update installed successfully via WinGet" -Severity Info
+                return [PSCustomObject]@{
+                    Success = $true
+                    ExitCode = 0
+                    Message = "Installed via WinGet"
+                    RebootRequired = $false
+                }
+            }
+            
+            throw "WinGet install failed with exit code $($p.ExitCode)"
+        }
+        catch {
+            Write-DriverLog -Message "Failed to install Dell Command Update via WinGet fallback: $($_.Exception.Message)" -Severity Error
+            throw
+        }
     }
     finally {
         # Cleanup installer
