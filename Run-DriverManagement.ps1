@@ -4,8 +4,6 @@
   Simple bootstrapper: install/update DriverManagement and run updates.
 
 .DESCRIPTION
-  Intended for non-technical users.
-
   - Prompts for UAC (admin) if needed
   - Installs/updates DriverManagement from PowerShell Gallery
   - Runs Invoke-DriverManagement with Windows Updates included
