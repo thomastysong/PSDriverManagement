@@ -106,90 +106,92 @@ function Install-WindowsUpdates {
     # PSWindowsUpdate can still prompt for confirmations or Microsoft Update registration in some environments.
     $oldConfirmPreference = $ConfirmPreference
     $oldProgressPreference = $ProgressPreference
-    $ConfirmPreference = 'None'
-    $ProgressPreference = 'SilentlyContinue'
     $oldPSDefaultParameterValues = $null
-    try {
-        $oldPSDefaultParameterValues = $global:PSDefaultParameterValues.Clone()
-    }
-    catch {
-        $oldPSDefaultParameterValues = @{}
-    }
-    $global:PSDefaultParameterValues['*:Confirm'] = $false
-    $global:PSDefaultParameterValues['*:WhatIf'] = $false
 
     try {
-        # Register Microsoft Update service manager silently (prevents interactive prompts in some cases)
-        if (Get-Command Add-WUServiceManager -ErrorAction SilentlyContinue) {
-            Add-WUServiceManager -MicrosoftUpdate -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        $ConfirmPreference = 'None'
+        $ProgressPreference = 'SilentlyContinue'
+
+        try {
+            $oldPSDefaultParameterValues = $global:PSDefaultParameterValues.Clone()
         }
-    }
-    catch {
-        # Non-fatal; PSWindowsUpdate may still function without explicit registration
-        Write-DriverLog -Message "Microsoft Update registration step encountered a warning: $($_.Exception.Message)" -Severity Warning
-    }
-    
-    Write-DriverLog -Message "Scanning for Windows Updates" -Severity Info
-    
-    $getParams = @{
-        MicrosoftUpdate = $true
-        Category = $Categories
-        Verbose = $true
-    }
-    
-    if (-not $IncludeDrivers) {
-        $getParams.NotCategory = 'Drivers'
-    }
-    
-    $updates = Get-WindowsUpdate @getParams -Confirm:$false -ErrorAction SilentlyContinue
-    
-    if (-not $updates) {
-        $result.Success = $true
-        $result.Message = "No Windows Updates available"
-        $result.ExitCode = 0
-        Write-DriverLog -Message $result.Message -Severity Info
-        return $result
-    }
-    
-    Write-DriverLog -Message "Found $($updates.Count) Windows Updates" -Severity Info `
-        -Context @{ Updates = ($updates | Select-Object KB, Title) }
-    
-    if ($PSCmdlet.ShouldProcess("$($updates.Count) Windows Updates", "Install")) {
-        $installParams = @{
+        catch {
+            $oldPSDefaultParameterValues = @{}
+        }
+        $global:PSDefaultParameterValues['*:Confirm'] = $false
+        $global:PSDefaultParameterValues['*:WhatIf'] = $false
+
+        try {
+            # Register Microsoft Update service manager silently (prevents interactive prompts in some cases)
+            if (Get-Command Add-WUServiceManager -ErrorAction SilentlyContinue) {
+                Add-WUServiceManager -MicrosoftUpdate -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+            }
+        }
+        catch {
+            # Non-fatal; PSWindowsUpdate may still function without explicit registration
+            Write-DriverLog -Message "Microsoft Update registration step encountered a warning: $($_.Exception.Message)" -Severity Warning
+        }
+        
+        Write-DriverLog -Message "Scanning for Windows Updates" -Severity Info
+        
+        $getParams = @{
             MicrosoftUpdate = $true
-            AcceptAll = $true
-            IgnoreReboot = $true
+            Category = $Categories
             Verbose = $true
-            Confirm = $false
         }
         
         if (-not $IncludeDrivers) {
-            $installParams.NotCategory = 'Drivers'
+            $getParams.NotCategory = 'Drivers'
         }
         
-        $installResults = Install-WindowsUpdate @installParams -ErrorAction SilentlyContinue
+        $updates = Get-WindowsUpdate @getParams -Confirm:$false -ErrorAction SilentlyContinue
         
-        $rebootStatus = Get-WURebootStatus -ErrorAction SilentlyContinue
+        if (-not $updates) {
+            $result.Success = $true
+            $result.Message = "No Windows Updates available"
+            $result.ExitCode = 0
+            Write-DriverLog -Message $result.Message -Severity Info
+            return $result
+        }
         
-        $result.Success = $true
-        $result.Message = "Installed $($installResults.Count) Windows Updates"
-        $result.UpdatesApplied = $installResults.Count
-        $result.RebootRequired = $rebootStatus.RebootRequired
-        $result.ExitCode = if ($result.RebootRequired) { 3010 } else { 0 }
-        $result.Details = @{ Updates = ($installResults | Select-Object KB, Title, Result) }
+        Write-DriverLog -Message "Found $($updates.Count) Windows Updates" -Severity Info `
+            -Context @{ Updates = ($updates | Select-Object KB, Title) }
+        
+        if ($PSCmdlet.ShouldProcess("$($updates.Count) Windows Updates", "Install")) {
+            $installParams = @{
+                MicrosoftUpdate = $true
+                AcceptAll = $true
+                IgnoreReboot = $true
+                Verbose = $true
+                Confirm = $false
+            }
+            
+            if (-not $IncludeDrivers) {
+                $installParams.NotCategory = 'Drivers'
+            }
+            
+            $installResults = Install-WindowsUpdate @installParams -ErrorAction SilentlyContinue
+            
+            $rebootStatus = Get-WURebootStatus -ErrorAction SilentlyContinue
+            
+            $result.Success = $true
+            $result.Message = "Installed $($installResults.Count) Windows Updates"
+            $result.UpdatesApplied = $installResults.Count
+            $result.RebootRequired = $rebootStatus.RebootRequired
+            $result.ExitCode = if ($result.RebootRequired) { 3010 } else { 0 }
+            $result.Details = @{ Updates = ($installResults | Select-Object KB, Title, Result) }
+        }
+        
+        Write-DriverLog -Message $result.Message -Severity Info -Context $result.ToHashtable()
+        return $result
     }
-    
-    Write-DriverLog -Message $result.Message -Severity Info -Context $result.ToHashtable()
-
-    return $result
-}
-
-finally {
-    # Restore preferences even if PSWindowsUpdate throws
-    $ConfirmPreference = $oldConfirmPreference
-    $ProgressPreference = $oldProgressPreference
-    if ($oldPSDefaultParameterValues -ne $null) {
-        $global:PSDefaultParameterValues = $oldPSDefaultParameterValues
+    finally {
+        # Restore preferences even if PSWindowsUpdate throws
+        $ConfirmPreference = $oldConfirmPreference
+        $ProgressPreference = $oldProgressPreference
+        if ($oldPSDefaultParameterValues -ne $null) {
+            $global:PSDefaultParameterValues = $oldPSDefaultParameterValues
+        }
     }
 }
 

@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.5.3'
+    ModuleVersion     = '1.5.4'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -200,6 +200,10 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.5.4
+### Bug Fixes
+- Fixed a PowerShell 5.1 module import failure caused by an invalid `finally {}` block in `Public/WindowsUpdate.ps1`.
+
 ## Version 1.5.3
 ### Improvements
 - **Fully non-interactive Windows Updates**: `Invoke-DriverManagement -IncludeWindowsUpdates` no longer prompts for Y/N (including reboot confirmations). Windows Update operations now force `-Confirm:$false`, pre-register Microsoft Update silently, and suppress interactive prompts.
