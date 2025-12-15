@@ -101,6 +101,33 @@ function Install-WindowsUpdates {
         $result.ExitCode = 1
         return $result
     }
+
+    # Ensure all PSWindowsUpdate operations are non-interactive (no prompts).
+    # PSWindowsUpdate can still prompt for confirmations or Microsoft Update registration in some environments.
+    $oldConfirmPreference = $ConfirmPreference
+    $oldProgressPreference = $ProgressPreference
+    $ConfirmPreference = 'None'
+    $ProgressPreference = 'SilentlyContinue'
+    $oldPSDefaultParameterValues = $null
+    try {
+        $oldPSDefaultParameterValues = $global:PSDefaultParameterValues.Clone()
+    }
+    catch {
+        $oldPSDefaultParameterValues = @{}
+    }
+    $global:PSDefaultParameterValues['*:Confirm'] = $false
+    $global:PSDefaultParameterValues['*:WhatIf'] = $false
+
+    try {
+        # Register Microsoft Update service manager silently (prevents interactive prompts in some cases)
+        if (Get-Command Add-WUServiceManager -ErrorAction SilentlyContinue) {
+            Add-WUServiceManager -MicrosoftUpdate -Confirm:$false -ErrorAction SilentlyContinue | Out-Null
+        }
+    }
+    catch {
+        # Non-fatal; PSWindowsUpdate may still function without explicit registration
+        Write-DriverLog -Message "Microsoft Update registration step encountered a warning: $($_.Exception.Message)" -Severity Warning
+    }
     
     Write-DriverLog -Message "Scanning for Windows Updates" -Severity Info
     
@@ -114,7 +141,7 @@ function Install-WindowsUpdates {
         $getParams.NotCategory = 'Drivers'
     }
     
-    $updates = Get-WindowsUpdate @getParams
+    $updates = Get-WindowsUpdate @getParams -Confirm:$false -ErrorAction SilentlyContinue
     
     if (-not $updates) {
         $result.Success = $true
@@ -133,15 +160,16 @@ function Install-WindowsUpdates {
             AcceptAll = $true
             IgnoreReboot = $true
             Verbose = $true
+            Confirm = $false
         }
         
         if (-not $IncludeDrivers) {
             $installParams.NotCategory = 'Drivers'
         }
         
-        $installResults = Install-WindowsUpdate @installParams
+        $installResults = Install-WindowsUpdate @installParams -ErrorAction SilentlyContinue
         
-        $rebootStatus = Get-WURebootStatus
+        $rebootStatus = Get-WURebootStatus -ErrorAction SilentlyContinue
         
         $result.Success = $true
         $result.Message = "Installed $($installResults.Count) Windows Updates"
@@ -152,8 +180,17 @@ function Install-WindowsUpdates {
     }
     
     Write-DriverLog -Message $result.Message -Severity Info -Context $result.ToHashtable()
-    
+
     return $result
+}
+
+finally {
+    # Restore preferences even if PSWindowsUpdate throws
+    $ConfirmPreference = $oldConfirmPreference
+    $ProgressPreference = $oldProgressPreference
+    if ($oldPSDefaultParameterValues -ne $null) {
+        $global:PSDefaultParameterValues = $oldPSDefaultParameterValues
+    }
 }
 
 function Get-DriverComplianceStatus {

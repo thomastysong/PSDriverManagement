@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.5.2'
+    ModuleVersion     = '1.5.3'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -200,6 +200,10 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.5.3
+### Improvements
+- **Fully non-interactive Windows Updates**: `Invoke-DriverManagement -IncludeWindowsUpdates` no longer prompts for Y/N (including reboot confirmations). Windows Update operations now force `-Confirm:$false`, pre-register Microsoft Update silently, and suppress interactive prompts.
+
 ## Version 1.5.2
 ### Improvements
 - **DCU scan-before-apply**: `Install-DellDriverUpdates` now runs `dcu-cli.exe /scan` first and only runs `/applyUpdates` when applicable updates are detected (more reliable DCU behavior).
