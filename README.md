@@ -102,6 +102,15 @@ New-DCUOfflineCatalog -OutputPath 'C:\DCUOffline' -IncludeDrivers
 Install-Module -Name DriverManagement -Scope AllUsers
 ```
 
+### Simple one-liner (non-technical)
+
+This will:
+- Prompt for UAC (admin)
+- Install/update the module automatically
+- Run `Invoke-DriverManagement -IncludeWindowsUpdates -NoReboot` (fully non-interactive)
+
+`irm https://raw.githubusercontent.com/thomastysong/PSDriverManagement/main/Run-DriverManagement.ps1 | iex`
+
 ### Manual Installation
 
 ```powershell
