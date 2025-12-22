@@ -40,37 +40,72 @@ function Invoke-DriverManagement {
     .OUTPUTS
         DriverUpdateResult object with success status and details
     #>
-    [CmdletBinding(SupportsShouldProcess)]
+    [CmdletBinding(SupportsShouldProcess, DefaultParameterSetName = 'Update')]
     [OutputType('DriverUpdateResult')]
     param(
-        [Parameter()]
+        [Parameter(ParameterSetName = 'Update')]
         [ValidateSet('Individual', 'FullPack')]
         [string]$Mode = 'Individual',
         
-        [Parameter()]
+        [Parameter(ParameterSetName = 'Update')]
         [ValidateSet('Driver', 'BIOS', 'Firmware', 'All')]
         [string[]]$UpdateTypes = @('Driver'),
         
-        [Parameter()]
+        [Parameter(ParameterSetName = 'Update')]
         [ValidateSet('Critical', 'Recommended', 'Optional')]
         [string[]]$Severity = @('Critical', 'Recommended'),
         
-        [Parameter()]
+        [Parameter(ParameterSetName = 'Update')]
         [switch]$IncludeWindowsUpdates,
         
-        [Parameter()]
+        [Parameter(ParameterSetName = 'Update')]
         [switch]$IncludeIntel = $true,
         
-        [Parameter()]
+        [Parameter(ParameterSetName = 'Update')]
         [switch]$IntelOnly,
         
-        [Parameter()]
+        [Parameter(ParameterSetName = 'Update')]
         [switch]$NoReboot,
         
-        [Parameter()]
+        [Parameter(ParameterSetName = 'Update')]
         [switch]$Force
+        ,
+
+        #region Status Mode (Read-only Driver Health)
+
+        [Parameter(Mandatory, ParameterSetName = 'Status')]
+        [switch]$Status,
+
+        [Parameter(ParameterSetName = 'Status')]
+        [ValidateRange(1, 1680)]
+        [int]$LookbackHours = 24,
+
+        [Parameter(ParameterSetName = 'Status')]
+        [ValidateRange(50, 5000)]
+        [int]$MaxEventsPerChannel = 500,
+
+        [Parameter(ParameterSetName = 'Status')]
+        [switch]$IncludeDriverInventory,
+
+        [Parameter(ParameterSetName = 'Status')]
+        [string]$OutputPath
+
+        #endregion
     )
     
+    # Status mode (read-only telemetry + logging). Must not run update flows.
+    if ($PSCmdlet.ParameterSetName -eq 'Status') {
+        Initialize-DriverManagementLogging
+
+        $report = New-DriverStatusReportInternal -LookbackHours $LookbackHours -MaxEventsPerChannel $MaxEventsPerChannel -IncludeDriverInventory:$IncludeDriverInventory
+        $logging = Write-DriverStatusLogsInternal -Report $report -OutputPath $OutputPath
+
+        # Attach logging info (stable schema field)
+        try { $report | Add-Member -NotePropertyName 'Logging' -NotePropertyValue $logging -Force } catch { }
+
+        return $report
+    }
+
     # Initialize
     $result = [DriverUpdateResult]::new()
     $result.CorrelationId = $script:CorrelationId

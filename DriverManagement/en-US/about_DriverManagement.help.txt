@@ -42,6 +42,9 @@ QUICK START
     # Run full pack reinstall with Windows Updates
     Invoke-DriverManagement -Mode FullPack -IncludeWindowsUpdates
 
+    # Read-only driver/device health snapshot (no updates installed)
+    Invoke-DriverManagement -Status -LookbackHours 24
+
 SUPPORTED HARDWARE
     All Dell and Lenovo systems are supported automatically.
     
@@ -89,7 +92,34 @@ LOGGING
     Event IDs:
         1000-1099: Debug/Information
         2000-2099: Warning
-        3000-3099: Error
+        3000-3999: Error
+
+STATUS MODE
+    Invoke-DriverManagement supports a read-only status mode that collects on-device
+    driver health signals and emits a structured DriverStatusReport object.
+
+    Status mode outputs:
+    - Windows Event Log: One summary event per run (EventId 1200/2200/3200 based on severity)
+    - JSON Artifact: Full DriverStatusReport JSON written under %ProgramData%\\PSDriverManagement\\Logs\\
+
+    Example:
+        Invoke-DriverManagement -Status -LookbackHours 24
+
+    Parameters (Status set):
+    -Status
+        Enables status mode (no installs/updates).
+    -LookbackHours
+        Event Viewer lookback window (default 24).
+    -MaxEventsPerChannel
+        Maximum events read per channel (default 500).
+    -IncludeDriverInventory
+        Adds driver store inventory via pnputil (can be slower).
+    -OutputPath
+        Optional directory to copy the JSON artifact.
+
+    Output schema:
+        DriverStatusReport.SchemaVersion = '1.0'
+        DriverStatusReport contains Host/OEM/PendingReboot/Devices/DriverSignals/Health/Logging.
     
     Retrieve logs:
     

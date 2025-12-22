@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.5.4'
+    ModuleVersion     = '1.5.5'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -162,6 +162,15 @@
         'Private\Logging.ps1'
         'Private\Utilities.ps1'
         'Private\VersionComparison.ps1'
+        'Private\Status\Get-PendingRebootStateInternal.ps1'
+        'Private\Status\Get-OemToolingStateInternal.ps1'
+        'Private\Status\Get-PnpNonOkDevicesInternal.ps1'
+        'Private\Status\Get-KernelPnp411Internal.ps1'
+        'Private\Status\Get-DriverStoreInventoryInternal.ps1'
+        'Private\Status\Get-DriverHealthScoreInternal.ps1'
+        'Private\Status\New-DriverStatusReportInternal.ps1'
+        'Private\Status\Write-DriverStatusArtifactInternal.ps1'
+        'Private\Status\Write-DriverStatusLogsInternal.ps1'
         'Classes\DriverManagementConfig.ps1'
         'en-US\about_DriverManagement.help.txt'
     )
@@ -200,6 +209,12 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.5.5
+### New Features
+- Added `Invoke-DriverManagement -Status` (read-only driver/device health snapshot) with dual logging (Event Log summary + JSON artifact).
+  - Collects PnP non-OK device state, Kernel-PnP 411 “problem starting” events, pending reboot indicators, and OEM tooling presence.
+  - Event IDs used for status summary: 1200 (Info), 2200 (Warning/Degraded), 3200 (Critical).
+
 ## Version 1.5.4
 ### Bug Fixes
 - Fixed a PowerShell 5.1 module import failure caused by an invalid `finally {}` block in `Public/WindowsUpdate.ps1`.

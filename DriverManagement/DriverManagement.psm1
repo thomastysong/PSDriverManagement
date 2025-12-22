@@ -90,6 +90,15 @@ $privateFiles = @(
     'Private\Logging.ps1'
     'Private\Utilities.ps1'
     'Private\VersionComparison.ps1'
+    'Private\Status\Get-PendingRebootStateInternal.ps1'
+    'Private\Status\Get-OemToolingStateInternal.ps1'
+    'Private\Status\Get-PnpNonOkDevicesInternal.ps1'
+    'Private\Status\Get-KernelPnp411Internal.ps1'
+    'Private\Status\Get-DriverStoreInventoryInternal.ps1'
+    'Private\Status\Get-DriverHealthScoreInternal.ps1'
+    'Private\Status\New-DriverStatusReportInternal.ps1'
+    'Private\Status\Write-DriverStatusArtifactInternal.ps1'
+    'Private\Status\Write-DriverStatusLogsInternal.ps1'
 )
 
 # Public functions (exported)
