@@ -1850,19 +1850,23 @@ function Install-DellDriverUpdates {
                 $result.UpdatesApplied = 0
             }
             6 {
-                # DCU sometimes reports "No update information found" when filters yield no results or scan data isn't present.
-                # Treat as "no updates" when the output matches this known benign case.
-                if ($dcuOutputStr -match 'No update information found|No update filters found') {
+                # DCU exit code 6 is documented as "No update information found".
+                # In practice DCU does not always emit that string to STDOUT/STDERR, so regex-only detection
+                # can incorrectly classify "no updates" as a hard failure and spam Write-Error.
+                #
+                # If the scan report indicates applicable updates, treat this as a real failure.
+                # Otherwise treat it as a benign "no applicable updates" outcome.
+                if ($applicableCount -gt 0) {
+                    $result.Success = $false
+                    $result.Message = "DCU scan reported $applicableCount applicable update(s) but /applyUpdates returned exit code 6 ($($exitInfo.Description)). $($exitInfo.Resolution)"
+                    $result.RebootRequired = $false
+                    $result.UpdatesFailed = 1
+                }
+                else {
                     $result.Success = $true
                     $result.Message = "No applicable updates"
                     $result.RebootRequired = $false
                     $result.UpdatesApplied = 0
-                }
-                else {
-                    $result.Success = $false
-                    $result.Message = "$($exitInfo.Description) (DCU exit code: $exitCode) - $($exitInfo.Resolution)"
-                    $result.RebootRequired = $false
-                    $result.UpdatesFailed = 1
                 }
             }
             5 {

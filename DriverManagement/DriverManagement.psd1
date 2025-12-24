@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.5.5'
+    ModuleVersion     = '1.5.6'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -209,6 +209,10 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.5.6
+### Bug Fixes
+- **Dell DCU exit code 6 handling**: Treats DCU exit code `6` ("No update information found") as **No applicable updates** when the scan report shows 0 applicable updates, preventing noisy `Write-Error` output in benign no-update scenarios.
+
 ## Version 1.5.5
 ### New Features
 - Added `Invoke-DriverManagement -Status` (read-only driver/device health snapshot) with dual logging (Event Log summary + JSON artifact).
