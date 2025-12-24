@@ -1,0 +1,63 @@
+name: Publish to PowerShell Gallery
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Publish DriverManagement to PSGallery
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if (-not $env:NUGET_API_KEY) {
+            throw 'Missing repository secret: NUGET_API_KEY'
+          }
+
+          try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+
+          try { Set-PSRepository -Name PSGallery -InstallationPolicy Trusted -ErrorAction SilentlyContinue | Out-Null } catch {}
+          try { Install-PackageProvider NuGet -Force -Scope CurrentUser -ErrorAction SilentlyContinue | Out-Null } catch {}
+
+          $modulePath = Join-Path $PWD 'DriverManagement'
+          $manifest   = Join-Path $modulePath 'DriverManagement.psd1'
+
+          $m = Test-ModuleManifest -Path $manifest
+          $localVersion = [version]$m.Version
+
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -match '^v(?<v>.+)$') {
+            $tagVersion = [version]$Matches.v
+          } else {
+            throw "This workflow publishes only on tags like 'v1.2.3'. Got: '$tag'"
+          }
+
+          if ($tagVersion -ne $localVersion) {
+            throw "Tag version ($tagVersion) does not match manifest version ($localVersion)."
+          }
+
+          $gallery = $null
+          try { $gallery = Find-Module -Name $m.Name -Repository PSGallery -ErrorAction Stop } catch {}
+          if ($gallery -and ([version]$gallery.Version -ge $tagVersion)) {
+            Write-Host "PSGallery already has $($gallery.Version) >= $tagVersion. Skipping publish."
+            exit 0
+          }
+
+          Publish-Module -Path $modulePath -NuGetApiKey $env:NUGET_API_KEY -Repository PSGallery -Verbose
+
+
