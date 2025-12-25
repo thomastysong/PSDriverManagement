@@ -262,7 +262,32 @@ function Update-DriverComplianceStatus {
         [int]$UpdatesPending = 0,
         
         [Parameter()]
-        [string]$Message = ''
+        [string]$Message = '',
+
+        # Extended machine-readable compliance detail (SchemaVersion 2.0)
+        [Parameter()]
+        [Nullable[bool]]$UpToDate,
+
+        [Parameter()]
+        [Nullable[bool]]$ScanIncomplete,
+
+        [Parameter()]
+        [Nullable[bool]]$RebootPending,
+
+        [Parameter()]
+        [object[]]$PendingUpdates,
+
+        [Parameter()]
+        [object[]]$HardwareIssues,
+
+        [Parameter()]
+        [object[]]$Errors,
+
+        [Parameter()]
+        [hashtable]$Summary,
+
+        [Parameter()]
+        [string]$SchemaVersion = '2.0'
     )
     
     $config = $script:ModuleConfig
@@ -276,6 +301,7 @@ function Update-DriverComplianceStatus {
     $oemInfo = Get-OEMInfo
     
     $compliance = [DriverComplianceStatus]::new()
+    $compliance.SchemaVersion = $SchemaVersion
     $compliance.Version = $config.ModuleVersion
     $compliance.Status = $Status
     $compliance.OEM = $oemInfo.OEM
@@ -284,8 +310,52 @@ function Update-DriverComplianceStatus {
     $compliance.UpdatesPending = $UpdatesPending
     $compliance.Message = $Message
     $compliance.CorrelationId = $script:CorrelationId
+
+    # Derived state / defaults (keeps backward compatible callers working without specifying new fields)
+    $rp = $false
+    try { $rp = Test-PendingReboot } catch { $rp = $false }
+
+    if ($PSBoundParameters.ContainsKey('RebootPending') -and $null -ne $RebootPending) {
+        $compliance.RebootPending = [bool]$RebootPending
+    }
+    else {
+        $compliance.RebootPending = [bool]$rp
+    }
+
+    if ($PSBoundParameters.ContainsKey('PendingUpdates') -and $null -ne $PendingUpdates) { $compliance.PendingUpdates = @($PendingUpdates) } else { $compliance.PendingUpdates = @() }
+    if ($PSBoundParameters.ContainsKey('HardwareIssues') -and $null -ne $HardwareIssues) { $compliance.HardwareIssues = @($HardwareIssues) } else { $compliance.HardwareIssues = @() }
+    if ($PSBoundParameters.ContainsKey('Errors') -and $null -ne $Errors) { $compliance.Errors = @($Errors) } else { $compliance.Errors = @() }
+
+    if ($PSBoundParameters.ContainsKey('ScanIncomplete') -and $null -ne $ScanIncomplete) {
+        $compliance.ScanIncomplete = [bool]$ScanIncomplete
+    }
+    else {
+        # Default: assume complete unless explicitly told otherwise (status mode will pass real value)
+        $compliance.ScanIncomplete = $false
+    }
+
+    if ($PSBoundParameters.ContainsKey('UpToDate') -and $null -ne $UpToDate) {
+        $compliance.UpToDate = [bool]$UpToDate
+    }
+    else {
+        # Best-effort inference for legacy callers: compliant + no pending + no reboot => up-to-date
+        $compliance.UpToDate = (($compliance.Status -eq [ComplianceStatus]::Compliant) -and ($compliance.UpdatesPending -eq 0) -and (-not $compliance.RebootPending))
+    }
+
+    if ($PSBoundParameters.ContainsKey('Summary') -and $null -ne $Summary) {
+        $compliance.Summary = $Summary
+    }
+    else {
+        $compliance.Summary = @{
+            UpdatesApplied = $compliance.UpdatesApplied
+            UpdatesPending = $compliance.UpdatesPending
+            PendingUpdatesCount = @($compliance.PendingUpdates).Count
+            HardwareIssuesCount = @($compliance.HardwareIssues).Count
+            ErrorsCount = @($compliance.Errors).Count
+        }
+    }
     
-    $compliance.ToHashtable() | ConvertTo-Json -Depth 3 | Set-Content -Path $config.CompliancePath -Encoding UTF8
+    $compliance.ToHashtable() | ConvertTo-Json -Depth 10 | Set-Content -Path $config.CompliancePath -Encoding UTF8 -Force
     
     Write-DriverLog -Message "Updated compliance status: $Status" -Severity Info -Context $compliance.ToHashtable()
 }

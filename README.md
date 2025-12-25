@@ -306,12 +306,33 @@ All modules log to:
 Event ID ranges:
 - 1000-1099: Informational
 - 2000-2099: Warning
-- 3000-3099: Error
+- 3000-3999: Error
+
+Status mode event IDs (`Invoke-DriverManagement -Status`):
+- 1200: Status summary (Compliant) - single-line JSON message
+- 2200: Status summary (NonCompliant/Pending) - single-line JSON message
+- 3200: Status summary (Error) - single-line JSON message
+- 2101: UpdatePending (one event per pending update; JSON message)
+- 2102: HardwareIssue (one event per non-OK device; JSON message)
+- 3101: ProviderScanError (scan/tooling errors; JSON message)
 
 Retrieve logs:
 ```powershell
 Get-DriverManagementLogs -Last 100 -Severity Error, Warning
 ```
+
+## Status mode (health snapshot)
+
+`Invoke-DriverManagement -Status` performs a **scan-only** health snapshot (no installs) and writes:
+- A full JSON artifact under `%ProgramData%\\PSDriverManagement\\Logs\\DriverStatus_*.json`
+- A **single-line JSON** summary event to the Windows Event Log (EventId 1200/2200/3200)
+The returned object includes a `Compliance` summary (`UpToDate`, `ScanIncomplete`, `RebootPending`) and an `Updates` section with `PendingUpdates` + `Providers` scan outcomes.
+
+## compliance.json (SchemaVersion 2.0)
+
+`%ProgramData%\\PSDriverManagement\\compliance.json` is now written with additional machine-readable fields (when writable), including:
+- `SchemaVersion`, `UpToDate`, `ScanIncomplete`, `RebootPending`
+- `PendingUpdates[]`, `HardwareIssues[]`, `Errors[]`, `Summary{...}`
 
 ## Supported Hardware
 

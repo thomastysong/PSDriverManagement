@@ -103,6 +103,43 @@ function Invoke-DriverManagement {
         # Attach logging info (stable schema field)
         try { $report | Add-Member -NotePropertyName 'Logging' -NotePropertyValue $logging -Force } catch { }
 
+        # Write enriched compliance.json from status mode (machine-readable for Intune/FleetDM)
+        try {
+            $pendingItems = @()
+            $hwIssues = @()
+            $scanErrors = @()
+
+            try { $pendingItems = @($report.Updates.PendingUpdates) } catch { $pendingItems = @() }
+            try { $hwIssues = @($report.Devices.NonOkDevices) } catch { $hwIssues = @() }
+            try { $scanErrors = @($report.Updates.Errors) } catch { $scanErrors = @() }
+
+            $cs = [ComplianceStatus]::Unknown
+            try { $cs = [ComplianceStatus]$report.Compliance.Status } catch { $cs = [ComplianceStatus]::Unknown }
+
+            $summary = @{
+                UpdatesApplied = 0
+                UpdatesPending = @($pendingItems).Count
+                PendingUpdatesCount = @($pendingItems).Count
+                HardwareIssuesCount = @($hwIssues).Count
+                ErrorsCount = @($scanErrors).Count
+            }
+
+            Update-DriverComplianceStatus -Status $cs `
+                -UpdatesApplied 0 `
+                -UpdatesPending (@($pendingItems).Count) `
+                -Message $report.Compliance.Message `
+                -UpToDate $report.Compliance.UpToDate `
+                -ScanIncomplete $report.Compliance.ScanIncomplete `
+                -RebootPending $report.Compliance.RebootPending `
+                -PendingUpdates $pendingItems `
+                -HardwareIssues $hwIssues `
+                -Errors $scanErrors `
+                -Summary $summary | Out-Null
+        }
+        catch {
+            Write-DriverLog -Message "Status mode: failed to write compliance.json: $($_.Exception.Message)" -Severity Warning
+        }
+
         return $report
     }
 
@@ -319,11 +356,142 @@ function Invoke-DriverManagement {
                           elseif ($result.Success) { 0 } 
                           else { 1 }
         
-        # Update compliance status
-        $complianceStatus = if ($result.Success) { [ComplianceStatus]::Compliant } else { [ComplianceStatus]::Error }
-        Update-DriverComplianceStatus -Status $complianceStatus `
-            -UpdatesApplied $result.UpdatesApplied `
-            -Message $result.Message
+        # Update compliance status (SchemaVersion 2.0: machine-readable details)
+        try {
+            $hwIssues = @()
+            try { $hwIssues = @((Get-PnpNonOkDevicesInternal).NonOkDevices) } catch { $hwIssues = @() }
+
+            $rebootPending = $false
+            try { $rebootPending = (Test-PendingReboot -or [bool]$result.RebootRequired) } catch { $rebootPending = [bool]$result.RebootRequired }
+
+            $pendingUpdates = @()
+            $errors = @()
+
+            # Provider-level failures
+            foreach ($providerKey in @('OEMResult', 'IntelResult', 'WindowsUpdateResult')) {
+                if (-not $result.Details.ContainsKey($providerKey)) { continue }
+                $provider = $result.Details[$providerKey]
+                if ($provider -is [hashtable] -and $provider.ContainsKey('Success') -and $provider.Success -eq $false) {
+                    $errors += [pscustomobject]@{
+                        Provider = $providerKey
+                        Stage = 'Provider'
+                        Message = (if ($provider.ContainsKey('Message')) { $provider.Message } else { 'Provider failure' })
+                        Details = $provider
+                    }
+                }
+            }
+
+            # Per-update failures/pending where details are available
+            try {
+                if ($result.Details.ContainsKey('OEMResult')) {
+                    $o = $result.Details['OEMResult']
+                    if ($o -is [hashtable] -and $o.ContainsKey('Details') -and $o.Details -is [hashtable] -and $o.Details.ContainsKey('Updates')) {
+                        foreach ($u in @($o.Details.Updates)) {
+                            if ($u -is [hashtable] -and $u.ContainsKey('Success') -and $u.Success -eq $false) {
+                                $pendingUpdates += [pscustomobject]@{
+                                    Provider = 'OEM'
+                                    UpdateType = $null
+                                    Title = $u.Title
+                                    Identifier = $null
+                                    InstalledVersion = $null
+                                    AvailableVersion = $u.Version
+                                    Severity = $null
+                                    RebootRequired = $null
+                                    Source = 'ProviderDetails'
+                                }
+                                $errors += [pscustomobject]@{
+                                    Provider = 'OEM'
+                                    Stage = 'Install'
+                                    Message = (if ($u.ContainsKey('Error')) { $u.Error } else { 'Update install failed' })
+                                    Details = $u
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            try {
+                if ($result.Details.ContainsKey('WindowsUpdateResult')) {
+                    $wu = $result.Details['WindowsUpdateResult']
+                    if ($wu -is [hashtable] -and $wu.ContainsKey('Details') -and $wu.Details -is [hashtable] -and $wu.Details.ContainsKey('Updates')) {
+                        foreach ($u in @($wu.Details.Updates)) {
+                            # PSWindowsUpdate returns objects; best-effort map to Title/KB/Result
+                            $title = $null
+                            $kb = $null
+                            $res = $null
+                            try { $title = $u.Title } catch { }
+                            try { $kb = $u.KB } catch { }
+                            try { $res = $u.Result } catch { }
+
+                            if ($res -and ($res -notmatch 'Installed|Succeeded')) {
+                                $pendingUpdates += [pscustomobject]@{
+                                    Provider = 'WindowsUpdate'
+                                    UpdateType = 'Software'
+                                    Title = $title
+                                    Identifier = $kb
+                                    InstalledVersion = $null
+                                    AvailableVersion = $null
+                                    Severity = $null
+                                    RebootRequired = $null
+                                    Source = 'PSWindowsUpdate'
+                                }
+                                $errors += [pscustomobject]@{
+                                    Provider = 'WindowsUpdate'
+                                    Stage = 'Install'
+                                    Message = "Windows Update install result: $res"
+                                    Details = @{ KB = $kb; Title = $title; Result = $res }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            $scanIncomplete = $false
+            $upToDate = (($errors.Count -eq 0) -and ($pendingUpdates.Count -eq 0) -and ($hwIssues.Count -eq 0) -and (-not $rebootPending))
+
+            $complianceStatus =
+                if ($errors.Count -gt 0) { [ComplianceStatus]::Error }
+                elseif ($rebootPending) { [ComplianceStatus]::Pending }
+                elseif (($pendingUpdates.Count -gt 0) -or ($hwIssues.Count -gt 0)) { [ComplianceStatus]::NonCompliant }
+                else { [ComplianceStatus]::Compliant }
+
+            $message = $result.Message
+            if (-not $message) {
+                if ($upToDate) { $message = 'UpToDate' }
+                else { $message = "UpdatesPending=$($pendingUpdates.Count); HardwareIssues=$($hwIssues.Count); RebootPending=$rebootPending; Errors=$($errors.Count)" }
+            }
+
+            $summary = @{
+                UpdatesApplied = $result.UpdatesApplied
+                UpdatesPending = $pendingUpdates.Count
+                PendingUpdatesCount = $pendingUpdates.Count
+                HardwareIssuesCount = $hwIssues.Count
+                ErrorsCount = $errors.Count
+            }
+
+            Update-DriverComplianceStatus -Status $complianceStatus `
+                -UpdatesApplied $result.UpdatesApplied `
+                -UpdatesPending $pendingUpdates.Count `
+                -Message $message `
+                -UpToDate $upToDate `
+                -ScanIncomplete $scanIncomplete `
+                -RebootPending $rebootPending `
+                -PendingUpdates $pendingUpdates `
+                -HardwareIssues $hwIssues `
+                -Errors $errors `
+                -Summary $summary | Out-Null
+        }
+        catch {
+            # Last-resort fallback to legacy behavior
+            $complianceStatus = if ($result.Success) { [ComplianceStatus]::Compliant } else { [ComplianceStatus]::Error }
+            Update-DriverComplianceStatus -Status $complianceStatus `
+                -UpdatesApplied $result.UpdatesApplied `
+                -Message $result.Message | Out-Null
+        }
         
         Write-DriverLog -Message "=== Driver Management Session Complete ===" -Severity Info `
             -Context $result.ToHashtable()

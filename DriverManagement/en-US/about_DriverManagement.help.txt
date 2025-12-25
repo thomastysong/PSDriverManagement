@@ -94,13 +94,23 @@ LOGGING
         2000-2099: Warning
         3000-3999: Error
 
+    Status mode event IDs (Invoke-DriverManagement -Status):
+        1200: Status summary (Compliant) - Message is single-line JSON
+        2200: Status summary (NonCompliant/Pending) - Message is single-line JSON
+        3200: Status summary (Error) - Message is single-line JSON
+        2101: UpdatePending (one event per pending update; JSON message)
+        2102: HardwareIssue (one event per non-OK device; JSON message)
+        3101: ProviderScanError (scan/tooling errors; JSON message)
+
 STATUS MODE
     Invoke-DriverManagement supports a read-only status mode that collects on-device
     driver health signals and emits a structured DriverStatusReport object.
 
     Status mode outputs:
-    - Windows Event Log: One summary event per run (EventId 1200/2200/3200 based on severity)
+    - Windows Event Log: One JSON summary event per run (EventId 1200/2200/3200 based on ComplianceStatus)
+      plus per-issue JSON events (2101/2102/3101) for machine parsing/alerting.
     - JSON Artifact: Full DriverStatusReport JSON written under %ProgramData%\\PSDriverManagement\\Logs\\
+    - compliance.json: Updated with machine-readable fields (SchemaVersion 2.0) when writable.
 
     Example:
         Invoke-DriverManagement -Status -LookbackHours 24
@@ -119,7 +129,7 @@ STATUS MODE
 
     Output schema:
         DriverStatusReport.SchemaVersion = '1.0'
-        DriverStatusReport contains Host/OEM/PendingReboot/Devices/DriverSignals/Health/Logging.
+        DriverStatusReport contains Host/OEM/PendingReboot/Devices/Updates/DriverSignals/Health/Compliance/Logging.
     
     Retrieve logs:
     

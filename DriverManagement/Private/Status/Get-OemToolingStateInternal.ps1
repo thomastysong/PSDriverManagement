@@ -35,7 +35,7 @@ function Get-OemToolingStateInternal {
         Join-Path $env:ProgramData 'Dell\CommandUpdate\Log'
         Join-Path $env:ProgramData 'Dell\UpdateService\Log'
         Join-Path $env:ProgramData 'Dell\Logs'
-    ) | Where-Object { Test-Path $_ }
+    ) | Where-Object { try { Test-Path $_ -ErrorAction Stop } catch { $false } }
 
     # Lenovo tooling detection
     $lenovoThinInstaller = Join-Path ${env:ProgramFiles(x86)} 'Lenovo\ThinInstaller\ThinInstaller.exe'
@@ -47,7 +47,7 @@ function Get-OemToolingStateInternal {
         Join-Path $env:ProgramData 'Lenovo\SystemUpdate\logs'
         Join-Path $env:ProgramData 'Lenovo\System Update\logs'
         Join-Path $env:ProgramData 'Lenovo\Vantage\Logs'
-    ) | Where-Object { Test-Path $_ }
+    ) | Where-Object { try { Test-Path $_ -ErrorAction Stop } catch { $false } }
 
     return [pscustomobject]@{
         Detected = $detected

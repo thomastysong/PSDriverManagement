@@ -166,6 +166,8 @@
         'Private\Status\Get-OemToolingStateInternal.ps1'
         'Private\Status\Get-PnpNonOkDevicesInternal.ps1'
         'Private\Status\Get-KernelPnp411Internal.ps1'
+        'Private\Status\Get-WindowsUpdatePendingInternal.ps1'
+        'Private\Status\Get-StatusPendingUpdatesInternal.ps1'
         'Private\Status\Get-DriverStoreInventoryInternal.ps1'
         'Private\Status\Get-DriverHealthScoreInternal.ps1'
         'Private\Status\New-DriverStatusReportInternal.ps1'
