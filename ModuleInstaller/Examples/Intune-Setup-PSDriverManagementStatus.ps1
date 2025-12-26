@@ -44,7 +44,7 @@ $ProgressPreference = 'SilentlyContinue'
 #region Configuration
 
 $RequiredModuleName = 'DriverManagement'
-$RequiredModuleVersion = [version]'1.5.6'
+$RequiredModuleVersion = [version]'1.5.7'
 
 $TaskPath = '\PSDriverManagement\'
 $TaskName = 'Status'
