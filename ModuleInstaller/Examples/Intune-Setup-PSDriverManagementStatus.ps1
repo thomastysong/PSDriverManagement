@@ -110,6 +110,9 @@ function Write-SetupLog {
         [Parameter()][hashtable]$Data = @{}
     )
 
+    $userName = $env:USERNAME
+    try { $userName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name } catch { }
+
     $payload = [ordered]@{
         Schema        = 'PSDriverManagement.Setup'
         SchemaVersion = '1.0'
@@ -122,7 +125,7 @@ function Write-SetupLog {
         TimestampUtc  = (Get-Date).ToUniversalTime().ToString('o')
         CorrelationId = $script:CorrelationId
         ComputerName  = $env:COMPUTERNAME
-        UserName      = (try { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name } catch { $env:USERNAME })
+        UserName      = $userName
         ProcessId     = $PID
 
         Data          = $Data
@@ -158,11 +161,20 @@ function Write-SetupFailure {
     $ex = $null
     try { $ex = $ErrorRecord.Exception } catch { $ex = $null }
 
+    $msg = $ErrorRecord.ToString()
+    $hresult = $null
+    $fqid = $null
+    $stack = $null
+    try { $msg = $ErrorRecord.Exception.Message } catch { }
+    try { $hresult = $ErrorRecord.Exception.HResult } catch { }
+    try { $fqid = $ErrorRecord.FullyQualifiedErrorId } catch { }
+    try { $stack = $ErrorRecord.ScriptStackTrace } catch { }
+
     Write-SetupLog -EventId 5500 -EntryType Error -EventType 'SetupFailed' -Stage $Stage -Message 'Setup failed' -Data @{
-        Error = (try { $ErrorRecord.Exception.Message } catch { $ErrorRecord.ToString() })
-        HResult = (try { $ErrorRecord.Exception.HResult } catch { $null })
-        FullyQualifiedErrorId = (try { $ErrorRecord.FullyQualifiedErrorId } catch { $null })
-        ScriptStackTrace = (try { $ErrorRecord.ScriptStackTrace } catch { $null })
+        Error = $msg
+        HResult = $hresult
+        FullyQualifiedErrorId = $fqid
+        ScriptStackTrace = $stack
     }
 }
 
@@ -228,7 +240,7 @@ function Ensure-DriverManagementModule {
         -Message 'Detected module state' -Data @{
             RequiredModuleVersion = $RequiredModuleVersion.ToString()
             Found = $state.Found
-            HighestVersion = (if ($state.HighestVersion) { $state.HighestVersion.ToString() } else { $null })
+            HighestVersion = if ($state.HighestVersion) { $state.HighestVersion.ToString() } else { $null }
             ModuleBase = $state.ModuleBase
             SearchLocations = @($locations)
             Discovered = @($state.All)
@@ -330,13 +342,22 @@ function Ensure-ScheduledTask {
     $t = Get-ScheduledTask -TaskName $TaskName -TaskPath $TaskPath -ErrorAction Stop
     $info = Get-ScheduledTaskInfo -TaskName $TaskName -TaskPath $TaskPath -ErrorAction Stop
 
+    $taskState = $null
+    $lastRunTime = $null
+    $lastTaskResult = $null
+    $nextRunTime = $null
+    try { $taskState = $t.State.ToString() } catch { }
+    try { $lastRunTime = $info.LastRunTime.ToString('o') } catch { }
+    try { $lastTaskResult = $info.LastTaskResult } catch { }
+    try { $nextRunTime = $info.NextRunTime.ToString('o') } catch { }
+
     Write-SetupLog -EventId 5141 -EntryType Information -EventType 'ScheduledTaskRegisterResult' -Stage 'EnsureScheduledTask' `
         -Message 'Scheduled task registered' -Data @{
             TaskExists = $true
-            State = (try { $t.State.ToString() } catch { $null })
-            LastRunTime = (try { $info.LastRunTime.ToString('o') } catch { $null })
-            LastTaskResult = (try { $info.LastTaskResult } catch { $null })
-            NextRunTime = (try { $info.NextRunTime.ToString('o') } catch { $null })
+            State = $taskState
+            LastRunTime = $lastRunTime
+            LastTaskResult = $lastTaskResult
+            NextRunTime = $nextRunTime
         }
 
     Write-SetupLog -EventId 5150 -EntryType Information -EventType 'ScheduledTaskStartAttempt' -Stage 'EnsureScheduledTask' `
@@ -353,12 +374,21 @@ function Ensure-ScheduledTask {
         $info = Get-ScheduledTaskInfo -TaskName $TaskName -TaskPath $TaskPath -ErrorAction SilentlyContinue
     } while ($info -and $info.LastRunTime -le $before -and (Get-Date) -lt $deadline)
 
+    $lastRunTime2 = $null
+    $lastTaskResult2 = $null
+    $nextRunTime2 = $null
+    $observedRun = $false
+    try { $lastRunTime2 = $info.LastRunTime.ToString('o') } catch { }
+    try { $lastTaskResult2 = $info.LastTaskResult } catch { }
+    try { $nextRunTime2 = $info.NextRunTime.ToString('o') } catch { }
+    try { $observedRun = [bool]($info.LastRunTime -gt $before) } catch { $observedRun = $false }
+
     Write-SetupLog -EventId 5151 -EntryType Information -EventType 'ScheduledTaskStartResult' -Stage 'EnsureScheduledTask' `
         -Message 'Scheduled task start issued' -Data @{
-            LastRunTime = (try { $info.LastRunTime.ToString('o') } catch { $null })
-            LastTaskResult = (try { $info.LastTaskResult } catch { $null })
-            NextRunTime = (try { $info.NextRunTime.ToString('o') } catch { $null })
-            ObservedRun = (try { [bool]($info.LastRunTime -gt $before) } catch { $false })
+            LastRunTime = $lastRunTime2
+            LastTaskResult = $lastTaskResult2
+            NextRunTime = $nextRunTime2
+            ObservedRun = $observedRun
             MaxWaitSeconds = $maxWaitSeconds
         }
 }
