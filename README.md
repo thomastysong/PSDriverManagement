@@ -171,6 +171,7 @@ PSDriverManagement/
 ├── ModuleInstaller/
 │   ├── Install-PSDriverManagement.ps1
 │   └── Examples/
+│       ├── Intune-Setup-PSDriverManagementStatus.ps1
 │       └── OrchestratorIntegration.ps1
 ├── LICENSE
 └── README.md
@@ -316,6 +317,22 @@ Status mode event IDs (`Invoke-DriverManagement -Status`):
 - 2102: HardwareIssue (one event per non-OK device; JSON message)
 - 3101: ProviderScanError (scan/tooling errors; JSON message)
 
+Intune setup script diagnostics (Application log, source `PSDriverManagement-Fleet`):
+- 5100: SetupStart
+- 5110: ModuleDetected
+- 5120: ModuleInstallAttempt
+- 5121: ModuleInstallResult
+- 5130: RunnerScriptWritten
+- 5140: ScheduledTaskRegisterAttempt
+- 5141: ScheduledTaskRegisterResult
+- 5150: ScheduledTaskStartAttempt
+- 5151: ScheduledTaskStartResult
+- 5199: SetupComplete
+- 5500: SetupFailed
+
+Setup file log:
+- `%ProgramData%\\PSDriverManagement\\Setup\\setup.jsonl` (one JSON object per line)
+
 Retrieve logs:
 ```powershell
 Get-DriverManagementLogs -Last 100 -Severity Error, Warning
@@ -382,6 +399,52 @@ Get-DCUExitInfo -ExitCode 500
 Install command:  powershell.exe -ExecutionPolicy Bypass -File Install-PSDriverManagement.ps1 -ModuleNames DriverManagement
 Uninstall:        powershell.exe -Command "Remove-Module DriverManagement -Force; Remove-Item '$env:ProgramFiles\WindowsPowerShell\Modules\DriverManagement' -Recurse"
 Detection:        Custom script checking Get-Module -ListAvailable -Name DriverManagement
+```
+
+### Intune PowerShell Script (Scheduled Status Telemetry)
+
+Use `ModuleInstaller/Examples/Intune-Setup-PSDriverManagementStatus.ps1` to:
+- Install `DriverManagement` (pinned to a specific version)
+- Create `\\PSDriverManagement\\Status` scheduled task (SYSTEM, hourly)
+- Start it immediately
+- Emit machine-readable JSON diagnostics (STDOUT + Application log + `%ProgramData%\\PSDriverManagement\\Setup\\setup.jsonl`)
+
+Fleet/Orbit queries:
+
+```sql
+-- 1) Who has the scheduled task?
+SELECT
+  name,
+  path,
+  state,
+  enabled,
+  datetime(last_run_time,'unixepoch') AS last_run_time_utc,
+  last_run_code,
+  last_run_message
+FROM scheduled_tasks
+WHERE name = 'Status'
+  AND path LIKE '%PSDriverManagement%';
+```
+
+```sql
+-- 2) Who is emitting PSDriverManagement events in the last 12 hours?
+SELECT datetime, eventid, level, data
+FROM windows_eventlog
+WHERE channel = 'PSDriverManagement'
+  AND provider_name = 'DriverManagement'
+  AND timestamp = 43200000
+ORDER BY datetime DESC;
+```
+
+```sql
+-- 3) Setup diagnostics + failures (last 24 hours)
+SELECT datetime, eventid, level, data
+FROM windows_eventlog
+WHERE channel = 'Application'
+  AND provider_name = 'PSDriverManagement-Fleet'
+  AND eventid IN (5100,5110,5120,5121,5130,5140,5141,5150,5151,5199,5500,5000)
+  AND timestamp = 86400000
+ORDER BY datetime DESC;
 ```
 
 ### FleetDM
