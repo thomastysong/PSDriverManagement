@@ -63,11 +63,15 @@ function Get-WindowsUpdatePendingInternal {
             $rebootRequired = $null
             try { $rebootRequired = [bool]$u.RebootRequired } catch { $rebootRequired = $null }
 
+            # PS 5.1 compatibility: extract Type before building object
+            $updateType = $null
+            try { $updateType = [string]$u.Type } catch { $updateType = $null }
+
             $updates += [pscustomobject]@{
                 Title = $u.Title
                 Identifier = $id
                 RevisionNumber = $rev
-                Type = (try { [string]$u.Type } catch { $null })
+                Type = $updateType
                 KBArticleIDs = $kb
                 RebootRequired = $rebootRequired
                 DriverManufacturer = $driverManufacturer

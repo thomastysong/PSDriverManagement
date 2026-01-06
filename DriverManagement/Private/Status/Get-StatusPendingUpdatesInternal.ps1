@@ -142,6 +142,10 @@ function Get-StatusPendingUpdatesInternal {
 
             $updates = @()
             foreach ($u in ($allUpdates | Where-Object { $_.Installer.Unattended } | Select-Object -First $MaxPerProvider)) {
+                # PS 5.1 compatibility: extract RebootRequired before building object
+                $rebootReq = $null
+                try { $rebootReq = [bool]$u.Reboot.Required } catch { $rebootReq = $null }
+
                 $updates += [pscustomobject]@{
                     Provider = 'Lenovo'
                     UpdateType = $u.Type
@@ -150,7 +154,7 @@ function Get-StatusPendingUpdatesInternal {
                     InstalledVersion = $null
                     AvailableVersion = $u.Version
                     Severity = $u.Severity
-                    RebootRequired = (try { [bool]$u.Reboot.Required } catch { $null })
+                    RebootRequired = $rebootReq
                     Source = 'LSUClient'
                 }
             }

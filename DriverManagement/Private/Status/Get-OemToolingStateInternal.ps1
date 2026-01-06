@@ -37,16 +37,39 @@ function Get-OemToolingStateInternal {
         Join-Path $env:ProgramData 'Dell\Logs'
     ) | Where-Object { try { Test-Path $_ -ErrorAction Stop } catch { $false } }
 
-    # Lenovo tooling detection
+    # Lenovo tooling detection (enhanced to match Dell's detail level)
     $lenovoThinInstaller = Join-Path ${env:ProgramFiles(x86)} 'Lenovo\ThinInstaller\ThinInstaller.exe'
     $lenovoSystemUpdate = Join-Path ${env:ProgramFiles(x86)} 'Lenovo\System Update\tvsu.exe'
 
-    $lsuClientModule = [bool](Get-Module -ListAvailable -Name LSUClient -ErrorAction SilentlyContinue)
+    # LSUClient module - get version info if present
+    $lsuClientModule = Get-Module -ListAvailable -Name LSUClient -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1
+    $lsuClientPresent = [bool]$lsuClientModule
+    $lsuClientVersion = $null
+    $lsuClientPath = $null
+    if ($lsuClientModule) {
+        try { $lsuClientVersion = $lsuClientModule.Version.ToString() } catch { }
+        try { $lsuClientPath = $lsuClientModule.ModuleBase } catch { }
+    }
+
+    # Thin Installer - get version if present
+    $thinInstallerPresent = Test-Path $lenovoThinInstaller -ErrorAction SilentlyContinue
+    $thinInstallerVersion = $null
+    if ($thinInstallerPresent) {
+        try { $thinInstallerVersion = (Get-Item $lenovoThinInstaller -ErrorAction SilentlyContinue).VersionInfo.FileVersion } catch { }
+    }
+
+    # System Update - get version if present
+    $systemUpdatePresent = Test-Path $lenovoSystemUpdate -ErrorAction SilentlyContinue
+    $systemUpdateVersion = $null
+    if ($systemUpdatePresent) {
+        try { $systemUpdateVersion = (Get-Item $lenovoSystemUpdate -ErrorAction SilentlyContinue).VersionInfo.FileVersion } catch { }
+    }
 
     $lenovoLogDirs = @(
         Join-Path $env:ProgramData 'Lenovo\SystemUpdate\logs'
         Join-Path $env:ProgramData 'Lenovo\System Update\logs'
         Join-Path $env:ProgramData 'Lenovo\Vantage\Logs'
+        Join-Path $env:ProgramData 'Lenovo\ThinInstaller\logs'
     ) | Where-Object { try { Test-Path $_ -ErrorAction Stop } catch { $false } }
 
     return [pscustomobject]@{
@@ -60,9 +83,26 @@ function Get-OemToolingStateInternal {
             }
         }
         Lenovo = [pscustomobject]@{
-            LSUClientModulePresent = $lsuClientModule
-            ThinInstallerPresent = (Test-Path $lenovoThinInstaller)
-            SystemUpdatePresent = (Test-Path $lenovoSystemUpdate)
+            # Backward compatible booleans
+            LSUClientModulePresent = $lsuClientPresent
+            ThinInstallerPresent = $thinInstallerPresent
+            SystemUpdatePresent = $systemUpdatePresent
+            # Enhanced: detailed tool info (matches Dell's DCU structure)
+            LSUClient = [pscustomobject]@{
+                Present = $lsuClientPresent
+                Version = $lsuClientVersion
+                ModulePath = $lsuClientPath
+            }
+            ThinInstaller = [pscustomobject]@{
+                Present = $thinInstallerPresent
+                Version = $thinInstallerVersion
+                ExePath = if ($thinInstallerPresent) { $lenovoThinInstaller } else { $null }
+            }
+            SystemUpdate = [pscustomobject]@{
+                Present = $systemUpdatePresent
+                Version = $systemUpdateVersion
+                ExePath = if ($systemUpdatePresent) { $lenovoSystemUpdate } else { $null }
+            }
             LogDirs = @($lenovoLogDirs)
         }
     }

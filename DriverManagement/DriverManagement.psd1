@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.5.7'
+    ModuleVersion     = '1.5.8'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -211,6 +211,15 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.5.8
+### Bug Fixes
+- **PowerShell 5.1 Compatibility**: Fixed `try` expression syntax in `Get-WindowsUpdatePendingInternal.ps1` and `Get-StatusPendingUpdatesInternal.ps1` that caused WindowsUpdate and Lenovo providers to fail in status mode on PowerShell 5.1.
+- **Lenovo Status Mode**: Lenovo provider now correctly scans for pending updates via LSUClient when the module is installed.
+
+### Improvements
+- **Enhanced Lenovo Tooling Detection**: `Get-OemToolingStateInternal` now captures version and path information for LSUClient, Thin Installer, and System Update (matching Dell DCU's detail level).
+- **Better Telemetry Parity**: Lenovo endpoints now emit the same level of detail to Event Viewer as Dell endpoints.
+
 ## Version 1.5.6
 ### Bug Fixes
 - **Dell DCU exit code 6 handling**: Treats DCU exit code `6` ("No update information found") as **No applicable updates** when the scan report shows 0 applicable updates, preventing noisy `Write-Error` output in benign no-update scenarios.
