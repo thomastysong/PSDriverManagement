@@ -221,187 +221,48 @@
 - **Better Telemetry Parity**: Lenovo endpoints now emit the same level of detail to Event Viewer as Dell endpoints.
 
 ## Version 1.5.6
-### Bug Fixes
-- **Dell DCU exit code 6 handling**: Treats DCU exit code `6` ("No update information found") as **No applicable updates** when the scan report shows 0 applicable updates, preventing noisy `Write-Error` output in benign no-update scenarios.
+- **Dell DCU exit code 6 handling**: Treats DCU exit code `6` as **No applicable updates** when scan shows 0 applicable updates.
 
 ## Version 1.5.5
-### New Features
-- Added `Invoke-DriverManagement -Status` (read-only driver/device health snapshot) with dual logging (Event Log summary + JSON artifact).
-  - Collects PnP non-OK device state, Kernel-PnP 411 “problem starting” events, pending reboot indicators, and OEM tooling presence.
-  - Event IDs used for status summary: 1200 (Info), 2200 (Warning/Degraded), 3200 (Critical).
+- Added `Invoke-DriverManagement -Status` for read-only driver/device health snapshots with Event Log and JSON artifact logging.
 
 ## Version 1.5.4
-### Bug Fixes
-- Fixed a PowerShell 5.1 module import failure caused by an invalid `finally {}` block in `Public/WindowsUpdate.ps1`.
+- Fixed PowerShell 5.1 module import failure caused by invalid `finally {}` block.
 
 ## Version 1.5.3
-### Improvements
-- **Fully non-interactive Windows Updates**: `Invoke-DriverManagement -IncludeWindowsUpdates` no longer prompts for Y/N (including reboot confirmations). Windows Update operations now force `-Confirm:$false`, pre-register Microsoft Update silently, and suppress interactive prompts.
+- **Fully non-interactive Windows Updates**: No Y/N prompts, forces `-Confirm:$false`, pre-registers Microsoft Update silently.
 
 ## Version 1.5.2
-### Improvements
-- **DCU scan-before-apply**: `Install-DellDriverUpdates` now runs `dcu-cli.exe /scan` first and only runs `/applyUpdates` when applicable updates are detected (more reliable DCU behavior).
-- **DCU severity mapping fix**: `-updateSeverity` now uses Dell-supported values (`security,recommended,optional`) and no longer passes invalid tokens that can cause “No update information found”.
-- **Better DCU handling**:
-  - Retries once when DCU reports “already running” (exit code 12)
-  - Treats exit code 6 with “No update information found / filter settings” output as **No applicable updates** (success), not a hard failure.
+- **DCU scan-before-apply**: Runs `/scan` first, only `/applyUpdates` when updates detected.
+- Better DCU exit code handling (retries on code 12, treats code 6 as success when appropriate).
 
 ## Version 1.5.1
-### Improvements
-- **DCU Install via WinGet Only**: `Install-DellCommandUpdate` now uses WinGet exclusively (`winget install Dell.CommandUpdate`), skipping direct Dell downloads which are frequently blocked (403 Forbidden). This is faster and more reliable.
+- **DCU Install via WinGet Only**: Uses `winget install Dell.CommandUpdate` exclusively.
 
 ## Version 1.5.0
-### Bug Fixes
-- **DCU Privilege Error Handling**: Fixed issue where `Invoke-DriverManagement` reported `Success=True` even when Dell Command Update failed with privilege/permission errors (exit codes 4, 5).
-- **Failure Propagation**: Orchestrator now correctly propagates failures from OEM/Intel/Windows Update providers when `UpdatesApplied=0` instead of silently marking as success.
-- **Improved Exit Code Descriptions**: Updated DCU exit codes 4 and 5 with more actionable resolution guidance (check Dell Client Management Service, ProgramData\\Dell permissions).
+- Fixed DCU privilege error handling (exit codes 4, 5).
+- Failure propagation from OEM/Intel/Windows Update providers.
 
-## Version 1.4.5
-### Improvements
-- **Dynamic Intel updates (Graphics/Wireless)**: Intel driver updates now use Intel DSA’s public data feed (`dsadata.intel.com/data/en`) to:
-  - Determine which packages apply to detected hardware (via DSA DetectionValues)
-  - Use real `downloadmirror.intel.com` URLs, including SHA1 verification when available
-- Removed the static Intel catalog file (`Config/intel_drivers.json`) and related placeholder logic
+## Version 1.4.x Summary
+- **Intel Driver Management**: Full support via Intel DSA data feed.
+- Dynamic Intel updates (Graphics/Wireless) using `dsadata.intel.com`.
+- WinGet auto-install for DCU fallback.
+- Auto-uninstalls Dell SupportAssist before DCU install.
+- Hardened Intel driver downloads with TLS 1.2.
 
-## Version 1.4.6
-### Bug Fixes
-- Dell Command Update installation now falls back to WinGet (`winget install -e --id Dell.CommandUpdate`) when Dell direct downloads are blocked (403/edge/Akamai).
+## Version 1.3.x Summary
+- **Windows Update Blocking**: Block/unblock by KB ID.
+- **Driver Rollback System**: Device Manager, Dell advancedDriverRestore, snapshots.
+- **Update Approval Workflow**: Local JSON, Intune, External API support.
+- **Dell Command Update Improvements**: Catalog-based detection, 25+ exit codes, offline catalog.
+- PowerShell 5.1 compatibility fixes.
 
-## Version 1.4.7
-### Improvements
-- Dell Command Update WinGet fallback now **auto-installs WinGet (best-effort)** when `winget.exe` is missing (App Installer via `https://aka.ms/getwinget` + `Add-AppxPackage`).
+## Earlier Versions
+- v1.2.x: DCU auto-install, custom download URL support.
+- v1.1.0: Universal Dell/Lenovo support (all models).
+- v1.0.0: Initial release with Dell/Lenovo/Windows Update support.
 
-## Version 1.4.8
-### Improvements
-- WinGet auto-install now uses the community installer script:
-  - `Invoke-WebRequest https://raw.githubusercontent.com/asheroto/winget-installer/master/winget-install.ps1 | iex`
-- This is typically more robust than a direct App Installer MSIX install in environments with missing dependencies.
-
-## Version 1.4.9
-### Improvements
-- Automatically uninstalls **Dell SupportAssist** (best-effort) before installing/updating Dell Command Update to avoid conflicts.
-- Adds public helper: `Uninstall-DellSupportAssist`
-
-## Version 1.4.4
-### New Features
-- **Intel DSA Integration**: Added support for Intel Driver & Support Assistant
-
-## Version 1.4.3
-### Bug Fixes
-- Hardened Intel driver downloads by enabling TLS 1.2 and reusing the module's resilient downloader (BITS + retry + fallback).
-- Fixed `Initialize-IntelModule` logging error where `Write-DriverLog -Context` was passed a PSCustomObject instead of a hashtable.
-
-## Version 1.4.2
-### Bug Fixes
-- Fixed variable name conflict: renamed `$matches` to `$catalogMatches` to avoid conflict with PowerShell's automatic `$matches` variable
-- Prevents "A hash table can only be added to another hash table" error during Intel device matching
-
-## Version 1.4.1
-### Bug Fixes
-- Fixed regex pattern escaping issue in Intel device ID matching
-- Device IDs with backslashes (e.g., `PCI\VEN_8086&DEV_*`) now properly escaped before regex matching
-- Prevents "Unrecognized escape sequence" errors when matching Intel devices
-
-## Version 1.4.0
-### New Features
-- **Intel Driver Management**: Full support for Intel driver detection, updates, and rollback
-  - `Get-IntelDevices` - Detect Intel devices by vendor ID (VEN_8086) and device class
-  - `Get-IntelDriverUpdates` - Scan for available Intel driver updates using catalog-based approach
-  - `Install-IntelDriverUpdates` - Download and install Intel drivers with snapshot support
-  - `Initialize-IntelModule` - Initialize Intel driver management
-  - `Invoke-IntelDriverRollback` - Rollback Intel drivers by device class
-  - Catalog-based driver management (Config/intel_drivers.json) since Intel DSA has no CLI support
-- **Enhanced Orchestration**: `Invoke-DriverManagement` now supports Intel updates
-  - `-IncludeIntel` parameter (defaults to `$true` - auto-detect Intel devices)
-  - `-IntelOnly` parameter for Intel-only updates
-  - Intel updates run in parallel with OEM and Windows Updates
-- **Intel Update Approval**: Extended approval system for Intel drivers
-  - `-AddBlockedIntelDevice` and `-RemoveBlockedIntelDevice` parameters
-  - `Test-UpdateApproval` supports Intel device ID and device class checking
-- **Improved Non-OEM Support**: Better handling of non-Dell/Lenovo systems
-  - Pending reboot now warns instead of blocking updates
-  - Windows Updates and Intel updates proceed even when OEM is unsupported
-  - More graceful handling of systems without OEM support
-
-### Bug Fixes
-- Fixed pending reboot check to warn instead of blocking all updates
-- Fixed Windows Updates not running on non-Dell/Lenovo systems
-- Improved success/failure logic to accurately reflect what actually happened
-
-## Version 1.3.4
-### Bug Fixes
-- Fixed PSWindowsUpdate alias warnings by removing aliases before reimport
-- Improved error suppression during module import to prevent harmless alias conflicts
-- Alias warnings no longer appear when calling Block-WindowsUpdate, Get-BlockedUpdates, etc.
-
-## Version 1.3.3
-### Bug Fixes
-- Fixed missing function exports: Block-WindowsUpdate, Get-UpdateApproval, and other UpdateBlocking/UpdateApproval functions were not exported
-- Added all missing functions to Export-ModuleMember in DriverManagement.psm1
-- Functions are now properly available after Import-Module
-
-## Version 1.3.2
-### Bug Fixes
-- Fixed array filtering bug where removing the last item from BlockedKBs, BlockedDrivers, or ApprovedUpdates would leave a null element instead of an empty array
-- Now properly filters out null values after Where-Object operations
-
-## Version 1.3.1
-### Bug Fixes
-- **PowerShell 5.1 Compatibility**: Fixed null-coalescing operator (`??`) usage that prevented module from loading in PowerShell 5.1
-  - Replaced all `??` operators with PowerShell 5.1-compatible `if/else` syntax
-  - Module now works correctly in both PowerShell 5.1 and PowerShell 7+
-
-## Version 1.3.0
-### New Features
-- **Windows Update Blocking**: Block/unblock updates by KB article ID using PSWindowsUpdate integration
-  - `Block-WindowsUpdate`, `Unblock-WindowsUpdate`, `Get-BlockedUpdates`
-  - `Export-UpdateBlocklist`, `Import-UpdateBlocklist` for portable blocklists
-  
-- **Driver Rollback System**: Multiple rollback mechanisms
-  - Device Manager integration: `Get-RollbackableDrivers`, `Invoke-DriverRollback`
-  - Dell advancedDriverRestore: `Enable-DellDriverRestore`, `New-DellDriverRestorePoint`, `Restore-DellDrivers`
-  - Driver snapshots: `New-DriverSnapshot`, `Restore-DriverSnapshot`, `Get-DriverSnapshots`
-  
-- **Update Approval Workflow**: Enterprise approval controls
-  - Local JSON blocklist: `Get-UpdateApproval`, `Set-UpdateApproval`, `Test-UpdateApproval`
-  - Intune integration: `Set-IntuneApprovalConfig`, `Sync-IntuneUpdateApproval`
-  - External API support: `Set-ApprovalEndpoint`, `Sync-ExternalApproval`
-  
-- **Dell Command Update Improvements** (inspired by Gary Blok's Dell-EMPS.ps1)
-  - Catalog-based version detection: `Get-DellCatalog`, `Get-LatestDCUVersion`
-  - Comprehensive exit code handling: `Get-DCUExitInfo` with 25+ documented codes
-  - Version check before download: `Get-DCUInstallDetails`
-  - Offline catalog support: `Set-DCUCatalogPath`, `New-DCUOfflineCatalog`
-  - Settings management: `Get-DCUSettings`, `Set-DCUSettings`
-
-### Environment Variables
-- `PSDM_DCU_URL`: Custom Dell Command Update download URL
-- `PSDM_DCU_CATALOG`: Custom DCU catalog path for offline use
-- `PSDM_APPROVAL_API`: External approval API endpoint
-
-## Version 1.2.1
-- Added PSDM_DCU_URL environment variable for custom Dell Command Update download URL
-- Enables enterprises to host DCU on internal CDN/repository
-- Updated documentation with CDN customization instructions
-
-## Version 1.2.0
-- Automatic Dell Command Update installation if not present
-- Downloads DCU from Dell's website and installs silently
-- Configurable download URL in module manifest
-- Matches Lenovo LSUClient auto-install behavior
-
-## Version 1.1.0
-- Universal support for ALL Dell and Lenovo systems (removed model restrictions)
-- No longer limited to specific models - works with any Dell or Lenovo hardware
-
-## Version 1.0.0
-- Initial release
-- Support for Dell Command Update CLI integration
-- Support for Lenovo LSUClient and Thin Installer
-- Dual-mode operation: Individual updates and Full pack reinstall
-- Windows Event Log and JSON file logging
-- Intune, FleetDM, Chef, Ansible, SCCM compatible
-- Pre-provisioning installation support
+Full changelog: https://github.com/thomastysong/PSDriverManagement/releases
 '@
             
             # Prerelease tag
