@@ -1738,6 +1738,14 @@ function Install-DellDriverUpdates {
         $isElevated = Test-IsElevated
 
         # Always run /scan first (more reliable than /applyUpdates directly; also generates the applicable updates report)
+        # IMPORTANT: Delete stale applicable updates XML before scanning. This prevents trusting cached results
+        # from previous scans with different filters (e.g., a previous scan found a BIOS update but current scan
+        # is for drivers only). Without this, the code may see ApplicableUpdatesCount > 0 from stale XML
+        # even when the current scan returns exit code 6 (no updates found).
+        if (Test-Path $applicableXml) {
+            try { Remove-Item -Path $applicableXml -Force -ErrorAction SilentlyContinue } catch { }
+        }
+
         $scanLog = Join-Path $programDataDellLogs ("DCU_Scan_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
         $scanArgs = @(
             '/scan'
@@ -1763,9 +1771,10 @@ function Install-DellDriverUpdates {
         Write-DriverLog -Message "DCU scan completed: $($scanExitInfo.Description) (Exit: $scanExitCode)" -Severity Info
 
         # If scan produced a report, use it to decide whether to run apply.
+        # IMPORTANT: If scan returned exit code 6 (no update info), do NOT trust the XML - it could be stale.
         $applicableCount = 0
         try {
-            if (Test-Path $applicableXml) {
+            if ($scanExitCode -notin @(6, 18, 500) -and (Test-Path $applicableXml)) {
                 [xml]$updatesXml = Get-Content $applicableXml -ErrorAction Stop
                 $nodes = @($updatesXml.updates.update)
                 $applicableCount = $nodes.Count
@@ -1777,7 +1786,7 @@ function Install-DellDriverUpdates {
 
         # If scan indicates no updates (or no report / no update info), exit cleanly.
         $scanOutputStr = $scanResult | Out-String
-        if ($applicableCount -eq 0 -and ($scanExitCode -in @(18, 500, 6) -or $scanOutputStr -match 'No update information found|No update filters found')) {
+        if ($scanExitCode -in @(6, 18, 500) -or ($applicableCount -eq 0 -and $scanOutputStr -match 'No update information found|No update filters found')) {
             $result.Success = $true
             $result.Message = "No applicable updates"
             $result.RebootRequired = $false

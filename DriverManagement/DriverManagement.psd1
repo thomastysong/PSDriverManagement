@@ -1,7 +1,7 @@
 @{
     # Module identification
     RootModule        = 'DriverManagement.psm1'
-    ModuleVersion     = '1.5.8'
+    ModuleVersion     = '1.5.9'
     GUID              = 'd42594f7-6005-4bcb-a6bf-23274f1eff9f'
     
     # Author and company
@@ -211,6 +211,10 @@
             
             # Release notes
             ReleaseNotes = @'
+## Version 1.5.9
+### Bug Fixes
+- **Dell DCU Stale XML Fix**: Fixed false-positive "1 applicable update" when DCU scan actually found no updates. The module now deletes the stale `DCUApplicableUpdates.xml` before each scan and does not trust the XML if the scan returns exit code 6 (no update information). This prevents the module from attempting `/applyUpdates` when there are no applicable updates for the requested filter (e.g., previous scan found a BIOS update but current scan is for drivers only).
+
 ## Version 1.5.8
 ### Bug Fixes
 - **PowerShell 5.1 Compatibility**: Fixed `try` expression syntax in `Get-WindowsUpdatePendingInternal.ps1` and `Get-StatusPendingUpdatesInternal.ps1` that caused WindowsUpdate and Lenovo providers to fail in status mode on PowerShell 5.1.
